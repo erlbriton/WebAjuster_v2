@@ -1,7 +1,7 @@
-package org.example.project
+package org.example.project.models
 
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
 class ParameterData(
