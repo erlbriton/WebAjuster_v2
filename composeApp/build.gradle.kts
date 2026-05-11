@@ -8,17 +8,19 @@ plugins {
 }
 
 kotlin {
+    // Поддержка обычного JS
     js {
         browser()
         binaries.executable()
     }
-    
+
+    // Поддержка Wasm
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
         browser()
         binaries.executable()
     }
-    
+
     sourceSets {
         commonMain.dependencies {
             implementation(libs.compose.runtime)
@@ -31,10 +33,17 @@ kotlin {
             implementation(libs.androidx.lifecycle.runtimeCompose)
             implementation("org.jetbrains.compose.material:material-icons-extended:1.7.3")
         }
+
+        // ДОБАВЛЯЕМ ЭТУ СЕКЦИЮ:
+        val wasmJsMain by getting {
+            dependencies {
+                // Это добавит те самые document и window
+                implementation(kotlin("stdlib-wasm-js"))
+            }
+        }
+
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }
     }
 }
-
-
