@@ -17,11 +17,8 @@ import org.example.project.logic.HeaderActions
 fun MainScreen() {
     val viewModel = remember { MainViewModel() }
 
-    // 1. ОБЩАЯ ШИРИНА таблицы (меняется, когда тянешь за левый край)
     var totalContentWidth by remember { mutableStateOf(900.dp) }
-
-    // 2. ШИРИНА САЙДБАРА (внутри таблицы)
-    var sidebarWidth by remember { mutableStateOf(200.dp) }
+    var sidebarWidth      by remember { mutableStateOf(200.dp) }
 
     val headerActions = remember {
         object : HeaderActions {
@@ -38,37 +35,35 @@ fun MainScreen() {
     CompositionLocalProvider(LocalMainViewModel provides viewModel) {
         Row(modifier = Modifier.fillMaxSize().background(Color.White)) {
 
-            // Распорка слева (пустое место браузера)
+            // Распорка слева
             Spacer(modifier = Modifier.weight(1f))
 
-            // --- ЛЕВАЯ ГРАНИЦА ВСЕЙ ТАБЛИЦЫ (АКТИВНАЯ) ---
+            // Левая граница (активная, меняет ширину всей таблицы)
             Box(
                 modifier = Modifier
-                    .width(6.dp) // Чуть шире для удобства захвата
+                    .width(6.dp)
                     .fillMaxHeight()
-                    .background(Color.Gray) // Видимая линия
+                    .background(Color.Gray)
                     .pointerInput(Unit) {
                         detectDragGestures { change, dragAmount ->
                             change.consume()
-                            // Когда тянем ВЛЕВО (минус), ширина всей таблицы должна УВЕЛИЧИТЬСЯ
                             totalContentWidth -= dragAmount.x.toDp()
                         }
                     }
             )
 
-            // ВЕСЬ РАБОЧИЙ БЛОК
+            // Весь рабочий блок
             Column(
                 modifier = Modifier
                     .width(totalContentWidth)
                     .fillMaxHeight()
             ) {
-
-                // ШАПКА
+                // Шапка
                 HeaderTable(actions = headerActions)
 
                 Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
 
-                    // САЙДБАР (Устройства)
+                    // Сайдбар (список устройств)
                     Box(
                         modifier = Modifier
                             .width(sidebarWidth)
@@ -76,7 +71,7 @@ fun MainScreen() {
                             .background(Color(0xFFF0F0F0))
                     )
 
-                    // ВНУТРЕННИЙ РАЗДЕЛИТЕЛЬ (Сплиттер)
+                    // Сплиттер между сайдбаром и таблицей
                     Box(
                         modifier = Modifier
                             .width(4.dp)
@@ -85,13 +80,14 @@ fun MainScreen() {
                             .pointerInput(Unit) {
                                 detectDragGestures { change, dragAmount ->
                                     change.consume()
-                                    // Меняет пропорции внутри таблицы
-                                    sidebarWidth += dragAmount.x.toDp()
+                                    sidebarWidth = (sidebarWidth + dragAmount.x.toDp())
+                                        .coerceAtLeast(80.dp)
+                                        .coerceAtMost(400.dp)
                                 }
                             }
                     )
 
-                    // САМА ТАБЛИЦА (Данные)
+                    // Таблица параметров
                     Column(
                         modifier = Modifier
                             .weight(1f)
@@ -103,7 +99,8 @@ fun MainScreen() {
                         LineFourthTable()
                         LineFifthTable()
 
-                        Box(modifier = Modifier.fillMaxSize().background(Color(0xFFFAFAFA)))
+                        // ── ТАБЛИЦА ДАННЫХ (DataTable) ──────────────────
+                        DataTable(modifier = Modifier.fillMaxSize())
                     }
                 }
             }
