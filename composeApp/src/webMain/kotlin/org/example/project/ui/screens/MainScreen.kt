@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -18,9 +17,11 @@ import org.example.project.logic.HeaderActions
 fun MainScreen() {
     val viewModel = remember { MainViewModel() }
 
-    // Переменная для управления шириной правой панели
-    // По умолчанию установим широкую — например, 600.dp (или можно будет вычислить % от экрана)
-    var tableWidth by remember { mutableStateOf(600.dp) }
+    // 1. ОБЩАЯ ШИРИНА таблицы (меняется, когда тянешь за левый край)
+    var totalContentWidth by remember { mutableStateOf(900.dp) }
+
+    // 2. ШИРИНА САЙДБАРА (внутри таблицы)
+    var sidebarWidth by remember { mutableStateOf(200.dp) }
 
     val headerActions = remember {
         object : HeaderActions {
@@ -35,51 +36,75 @@ fun MainScreen() {
     }
 
     CompositionLocalProvider(LocalMainViewModel provides viewModel) {
-        Row(modifier = Modifier.fillMaxSize()) {
+        Row(modifier = Modifier.fillMaxSize().background(Color.White)) {
 
-            // 1. ЛЕВАЯ ЧАСТЬ: Основная рабочая область (занимает всё свободное место)
+            // Распорка слева (пустое место браузера)
+            Spacer(modifier = Modifier.weight(1f))
+
+            // --- ЛЕВАЯ ГРАНИЦА ВСЕЙ ТАБЛИЦЫ (АКТИВНАЯ) ---
             Box(
                 modifier = Modifier
-                    .weight(1f)
+                    .width(6.dp) // Чуть шире для удобства захвата
                     .fillMaxHeight()
-                    .background(Color(0xFFECECEC)), // Светло-серый фон для контраста
-                contentAlignment = Alignment.Center
-            ) {
-                // Здесь будет основной контент, графики и т.д.
-            }
-
-            // 2. РАЗДЕЛИТЕЛЬ (Сплиттер): теперь он СЛЕВА от таблицы
-            Box(
-                modifier = Modifier
-                    .width(4.dp)
-                    .fillMaxHeight()
-                    .background(Color.DarkGray)
+                    .background(Color.Gray) // Видимая линия
                     .pointerInput(Unit) {
                         detectDragGestures { change, dragAmount ->
                             change.consume()
-                            // Когда тянем влево, dragAmount.x отрицательный.
-                            // Вычитаем его, чтобы ширина увеличивалась при движении влево.
-                            tableWidth -= dragAmount.x.toDp()
+                            // Когда тянем ВЛЕВО (минус), ширина всей таблицы должна УВЕЛИЧИТЬСЯ
+                            totalContentWidth -= dragAmount.x.toDp()
                         }
                     }
             )
 
-            // 3. ПРАВАЯ ЧАСТЬ: Твоя таблица
+            // ВЕСЬ РАБОЧИЙ БЛОК
             Column(
                 modifier = Modifier
-                    .width(tableWidth)
+                    .width(totalContentWidth)
                     .fillMaxHeight()
-                    .background(Color.White)
             ) {
-                HeaderTable(actions = headerActions)
-                LineTwoTable()
-                LineThirdTable(selectedDevice = null)
-                LineFourthTable()
-                LineFifthTable()
 
-                // Место для будущей таблицы параметров (CreatorColumn)
-                Box(modifier = Modifier.fillMaxSize().background(Color(0xFFFAFAFA))) {
-                    // Тут будет список параметров
+                // ШАПКА
+                HeaderTable(actions = headerActions)
+
+                Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
+
+                    // САЙДБАР (Устройства)
+                    Box(
+                        modifier = Modifier
+                            .width(sidebarWidth)
+                            .fillMaxHeight()
+                            .background(Color(0xFFF0F0F0))
+                    )
+
+                    // ВНУТРЕННИЙ РАЗДЕЛИТЕЛЬ (Сплиттер)
+                    Box(
+                        modifier = Modifier
+                            .width(4.dp)
+                            .fillMaxHeight()
+                            .background(Color.LightGray)
+                            .pointerInput(Unit) {
+                                detectDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    // Меняет пропорции внутри таблицы
+                                    sidebarWidth += dragAmount.x.toDp()
+                                }
+                            }
+                    )
+
+                    // САМА ТАБЛИЦА (Данные)
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .background(Color.White)
+                    ) {
+                        LineTwoTable()
+                        LineThirdTable(selectedDevice = null)
+                        LineFourthTable()
+                        LineFifthTable()
+
+                        Box(modifier = Modifier.fillMaxSize().background(Color(0xFFFAFAFA)))
+                    }
                 }
             }
         }

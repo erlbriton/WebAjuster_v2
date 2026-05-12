@@ -36,7 +36,7 @@ fun HeaderTable(
             // КНОПКА ОБНОВИТЬ (Упрощенная версия для запуска)
             Box(modifier = Modifier.padding(start = 8.dp)) {
                 IconButton(onClick = { expanded = true }, modifier = Modifier.size(24.dp)) {
-                    Icon(Icons.Default.Build, null, tint = Color(0xFF04C104))
+                    Icon(Icons.Default.Build, null, tint = Color(0xFF04C11D))
                 }
                 DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                     menuItems.forEach { label ->
