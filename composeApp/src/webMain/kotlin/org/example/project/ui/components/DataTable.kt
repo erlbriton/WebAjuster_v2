@@ -42,27 +42,33 @@ fun DataTable(modifier: Modifier = Modifier) {
 @Composable
 private fun HeaderSection(weights: List<Float>) {
     Column(modifier = Modifier.fillMaxWidth().background(Color(0xFFE0E0E0))) {
-        // УРОВЕНЬ 1: Группы
+        // УРОВЕНЬ 1: Группы (внутри HeaderSection)
         Row(modifier = Modifier.fillMaxWidth().height(28.dp)) {
-            // ПАРАМЕТРЫ: объединяем №, Имя, Описание, Ед.изм
+            // ПАРАМЕТРЫ: Сумма №(50) + Имя(w0) + Описание(w1) + Ед.изм(50)
             Box(
                 modifier = Modifier
-                    .width(FIXED_WIDTH * 2)
-                    .weight(weights[0] + weights[1])
+                    .width(FIXED_WIDTH * 2) // ОБЯЗАТЕЛЬНО * 2 (это № и Ед.изм)
+                    .weight(weights[0] + weights[1]) // Это Имя и Описание
                     .fillMaxHeight()
                     .border(0.5.dp, ColorBorder),
                 contentAlignment = Alignment.Center
             ) { Text("ПАРАМЕТРЫ", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
 
-            // БАЗА: hex + phys
+            // БАЗА: Только веса для hex(w2) и Phys(w3)
             Box(
-                modifier = Modifier.weight(weights[2] + weights[3]).fillMaxHeight().border(0.5.dp, ColorBorder),
+                modifier = Modifier
+                    .weight(weights[2] + weights[3])
+                    .fillMaxHeight()
+                    .border(0.5.dp, ColorBorder),
                 contentAlignment = Alignment.Center
             ) { Text("БАЗА", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
 
-            // КОНТРОЛЛЕР: hex + phys
+            // КОНТРОЛЛЕР: Только веса для hex(w4) и Phys(w5)
             Box(
-                modifier = Modifier.weight(weights[4] + weights[5]).fillMaxHeight().border(0.5.dp, ColorBorder),
+                modifier = Modifier
+                    .weight(weights[4] + weights[5])
+                    .fillMaxHeight()
+                    .border(0.5.dp, ColorBorder),
                 contentAlignment = Alignment.Center
             ) { Text("КОНТРОЛЛЕР", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
         }
