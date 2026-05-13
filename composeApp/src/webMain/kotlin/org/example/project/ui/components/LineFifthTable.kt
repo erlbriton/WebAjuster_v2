@@ -14,7 +14,7 @@ import androidx.compose.ui.unit.dp
 import org.example.project.ui.TableConfig
 import org.example.project.utils.ManualAndAutoInputField
 import org.example.project.utils.TableIconButton
-import org.example.project.viewmodel.LocalMainViewModel
+import org.example.project.viewmodels.LocalMainViewModel
 
 @Composable
 fun LineFifthTable(

@@ -1,24 +1,26 @@
-package org.example.project.viewmodel
+package org.example.project.viewmodels
 
 import androidx.compose.runtime.*
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import org.example.project.models.ParameterData
 
 class MainViewModel {
-    var typeMechanism       by mutableStateOf("Не указан")
-    var dateSet             by mutableStateOf("01.01.2024")
+    // ── Поля состояния для шапки (используются в LineFifthTable и HeaderActions) ──
+    var typeMechanism        by mutableStateOf("Не указан")
+    var dateSet              by mutableStateOf("29.01.1964")
     var installationLocation by mutableStateOf("Цех №1")
 
     // ── Список параметров ──────────────────────────────────────────────────
     val parameters = mutableStateListOf<ParameterData>()
 
-    // ── Ширины восьми столбцов таблицы параметров ─────────────────────────
-    // №, Имя, Описание, Ед.изм | hex(База), Physical(База) | hex(Контр), Physical(Контр)
-    val colWidths = mutableStateListOf<Dp>(
-        60.dp, 110.dp, 200.dp, 60.dp,
-        70.dp, 90.dp,
-        70.dp, 90.dp
+    // ── Веса шести динамических столбцов ──────────────────────────────────
+    // [0]Имя, [1]Описание | [2]hex(База), [3]Phys(База) | [4]hex(Контр), [5]Phys(Контр)
+    val colWeights = mutableStateListOf<Float>(
+        0.15f,  // Имя
+        0.35f,  // Описание
+        0.125f, // hex База
+        0.125f, // Phys База
+        0.125f, // hex Контр
+        0.125f  // Phys Контр
     )
 
     // ── Выделенная строка ─────────────────────────────────────────────────
@@ -47,7 +49,11 @@ class MainViewModel {
         }
     }
 
-    // ── Загрузка тестовых данных (заменить на реальный парсер) ────────────
+    // ── Загрузка данных ──────────────────────────────────────────────────
+    init {
+        loadSampleData()
+    }
+
     fun loadSampleData() {
         parameters.clear()
         val sample = listOf(

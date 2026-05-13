@@ -1,3 +1,5 @@
+//MainScreen.kt
+
 package org.example.project.ui.screens
 
 import androidx.compose.foundation.background
@@ -9,8 +11,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import org.example.project.ui.components.*
-import org.example.project.viewmodel.MainViewModel
-import org.example.project.viewmodel.LocalMainViewModel
+import org.example.project.viewmodels.MainViewModel
+import org.example.project.viewmodels.LocalMainViewModel
 import org.example.project.logic.HeaderActions
 
 @Composable
