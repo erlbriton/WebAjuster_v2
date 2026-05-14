@@ -30,7 +30,7 @@ import org.example.project.models.ParameterData
 import org.example.project.viewmodels.LocalMainViewModel
 import org.example.project.viewmodels.MainViewModel
 
-private val ColorBorder     = Color(0xFF9E9E9E)
+private val ColorBorder     = Color(0xFF000000)
 private val ColorHeaderGroup = Color(0xFFBDBDBD)
 private val ColorHeaderCol   = Color(0xFFE0E0E0)
 
@@ -73,7 +73,7 @@ fun DataTable(modifier: Modifier = Modifier) {
             // Рисуем вертикальные линии на ВСЮ высоту таблицы поверх контента
             .drawWithContent {
                 drawContent()
-                val sw = 0.5.dp.toPx()
+                val sw = 1.5.dp.toPx()
                 // Вертикальные линии начинаются НИЖЕ шапки и идут до конца таблицы
                 lineXPositions.forEach { x ->
                     drawLine(ColorBorder, Offset(x, headerHeight), Offset(x, size.height), sw)
@@ -121,9 +121,12 @@ private fun HeaderSection(
                 drawContent()
                 val sw = 0.5.dp.toPx()
                 val total = weights.sum()
-                // X после столбцов №+Имя+Описание+Ед.изм
-                val x = (weights[0] + weights[1] + weights[2] + weights[3]) / total * size.width
-                drawLine(ColorBorder, Offset(x, 0f), Offset(x, size.height), sw)
+                // X после столбцов №+Имя+Описание+Ед.изм (между ПАРАМЕТРЫ и БАЗА)
+                val x1 = (weights[0] + weights[1] + weights[2] + weights[3]) / total * size.width
+                drawLine(ColorBorder, Offset(x1, 0f), Offset(x1, size.height), sw)
+                // X после hex+Physical БАЗЫ (между БАЗА и КОНТРОЛЛЕР)
+                val x2 = (weights[0] + weights[1] + weights[2] + weights[3] + weights[4] + weights[5]) / total * size.width
+                drawLine(ColorBorder, Offset(x2, 0f), Offset(x2, size.height), sw)
             }
         ) {
             Box(modifier = Modifier.weight(weights[0] + weights[1] + weights[2] + weights[3]).fillMaxHeight()) {
@@ -176,22 +179,18 @@ private fun HeaderSection(
 private fun ParameterRow(param: ParameterData, weights: List<Float>, onClick: () -> Unit) {
     val hexMismatch  = param.hexBase.trim() != param.hexCtrl.trim()
     val physMismatch = param.physBase.trim() != param.physCtrl.trim()
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(24.dp)
             .background(if (param.isSelected) Color(0xFFB3E5FC) else Color.White)
-            // Только нижняя граница строки — вертикальные линии рисует родительский Box
-            .drawBehind {
-                val sw = 0.5.dp.toPx()
-                drawLine(ColorBorder, Offset(0f, size.height), Offset(size.width, size.height), sw)
-            }
+            // Горизонтальная линия удалена, вертикальные рисует DataTable
             .clickable { onClick() }
     ) {
+        // Все ячейки теперь используют центрирование по умолчанию
         ReadOnlyCell(param.code,        weights[0], TextAlign.Center)
-        ReadOnlyCell(param.idName,      weights[1])
-        ReadOnlyCell(param.description, weights[2])
+        ReadOnlyCell(param.idName,      weights[1], TextAlign.Center)
+        ReadOnlyCell(param.description, weights[2], TextAlign.Center)
         ReadOnlyCell(param.unit,        weights[3], TextAlign.Center)
 
         val redColor  = Color(0xFFD32F2F)
@@ -227,26 +226,27 @@ private fun GroupCell(text: String, modifier: Modifier = Modifier) {
 private fun RowScope.ReadOnlyCell(
     text: String,
     weight: Float,
-    align: TextAlign = TextAlign.Start
+    align: TextAlign = TextAlign.Center // Установили центр по умолчанию
 ) {
     Box(
         modifier = Modifier
             .weight(weight)
             .fillMaxHeight()
             .padding(horizontal = 4.dp),
-        contentAlignment = if (align == TextAlign.Center) Alignment.Center else Alignment.CenterStart
+        contentAlignment = Alignment.Center // Центрирует контент внутри Box
     ) {
         Text(
             text,
-            fontSize  = 10.sp,
-            maxLines  = 1,
-            overflow  = TextOverflow.Ellipsis,
-            textAlign = align,
-            modifier  = Modifier.fillMaxWidth()
+            fontSize   = 10.sp,
+            maxLines   = 1,
+            overflow   = TextOverflow.Ellipsis,
+            textAlign  = align, // Центрирует текст внутри границ Text
+            modifier   = Modifier.fillMaxWidth()
         )
     }
 }
 
+// --- ОБНОВЛЕННАЯ РЕДАКТИРУЕМАЯ ЯЧЕЙКА (с центрированием) ---
 @Composable
 private fun RowScope.EditableCell(
     weight: Float,
@@ -259,13 +259,17 @@ private fun RowScope.EditableCell(
             .weight(weight)
             .fillMaxHeight()
             .padding(horizontal = 2.dp),
-        contentAlignment = Alignment.CenterStart
+        contentAlignment = Alignment.Center // Центрирует поле ввода внутри ячейки
     ) {
         BasicTextField(
             value         = value,
             onValueChange = onValueChange,
             singleLine    = true,
-            textStyle     = TextStyle(fontSize = 10.sp, color = textColor),
+            textStyle     = TextStyle(
+                fontSize  = 10.sp,
+                color     = textColor,
+                textAlign = TextAlign.Center // Текст внутри поля ввода по центру
+            ),
             modifier      = Modifier.fillMaxWidth()
         )
     }
