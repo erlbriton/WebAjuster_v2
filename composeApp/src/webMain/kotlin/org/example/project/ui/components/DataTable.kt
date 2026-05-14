@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerIcon
@@ -29,69 +30,138 @@ import org.example.project.models.ParameterData
 import org.example.project.viewmodels.LocalMainViewModel
 import org.example.project.viewmodels.MainViewModel
 
-private val ColorBorder = Color(0xFF9E9E9E)
+private val ColorBorder     = Color(0xFF9E9E9E)
+private val ColorHeaderGroup = Color(0xFFBDBDBD)
+private val ColorHeaderCol   = Color(0xFFE0E0E0)
 
-fun Modifier.drawTableBorder(right: Boolean = true, bottom: Boolean = true): Modifier = this.drawBehind {
-    val strokeWidth = 0.5.dp.toPx()
-    if (right) drawLine(ColorBorder, Offset(size.width, 0f), Offset(size.width, size.height), strokeWidth)
-    if (bottom) drawLine(ColorBorder, Offset(0f, size.height), Offset(size.width, size.height), strokeWidth)
-}
+// Рисует правую и нижнюю границу ячейки
+fun Modifier.drawTableBorder(right: Boolean = true, bottom: Boolean = true): Modifier =
+    this.drawBehind {
+        val sw = 0.5.dp.toPx()
+        if (right)  drawLine(ColorBorder, Offset(size.width, 0f),    Offset(size.width, size.height), sw)
+        if (bottom) drawLine(ColorBorder, Offset(0f, size.height),   Offset(size.width, size.height), sw)
+    }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DataTable
+// ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun DataTable(modifier: Modifier = Modifier) {
-    val vm = LocalMainViewModel.current
+    val vm      = LocalMainViewModel.current
     val weights = vm.colWeights
-    var totalWidth by remember { mutableStateOf(0f) }
 
-    Column(modifier = modifier
-        .fillMaxSize()
-        .onGloballyPositioned { totalWidth = it.size.width.toFloat() }
-        .drawBehind {
-            val sw = 0.5.dp.toPx()
-            drawLine(ColorBorder, Offset(0f, 0f), Offset(size.width, 0f), sw)
-            drawLine(ColorBorder, Offset(0f, 0f), Offset(0f, size.height), sw)
+    var totalWidth    by remember { mutableStateOf(0f) }
+    var headerHeight  by remember { mutableStateOf(0f) }  // высота только строки групп (ПАРАМЕТРЫ/БАЗА/КОНТРОЛЛЕР)
+
+    // Вычисляем X-позиции вертикальных линий по весам
+    // Линии проходят после каждого столбца (кроме последнего)
+    val lineXPositions: List<Float> = remember(weights.toList(), totalWidth) {
+        val total = weights.sum()
+        val positions = mutableListOf<Float>()
+        var acc = 0f
+        for (i in 0 until weights.size - 1) {
+            acc += weights[i] / total
+            positions.add(acc * totalWidth)
         }
-    ) {
-        HeaderSection(weights, totalWidth, vm)
+        positions
+    }
 
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
-            itemsIndexed(vm.parameters) { _, param ->
-                ParameterRow(param, weights) { vm.selectRow(param.code) }
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .onGloballyPositioned { totalWidth = it.size.width.toFloat() }
+            // Рисуем вертикальные линии на ВСЮ высоту таблицы поверх контента
+            .drawWithContent {
+                drawContent()
+                val sw = 0.5.dp.toPx()
+                // Вертикальные линии начинаются НИЖЕ шапки и идут до конца таблицы
+                lineXPositions.forEach { x ->
+                    drawLine(ColorBorder, Offset(x, headerHeight), Offset(x, size.height), sw)
+                }
+            }
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+
+            // Шапка
+            Column(modifier = Modifier.fillMaxWidth()) {
+                HeaderSection(weights, totalWidth, vm, onGroupRowHeight = { headerHeight = it })
+            }
+
+            // Тело таблицы
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                itemsIndexed(vm.parameters, key = { _, p -> p.code }) { _, param ->
+                    ParameterRow(param, weights) { vm.selectRow(param.code) }
+                }
             }
         }
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Шапка
+// ─────────────────────────────────────────────────────────────────────────────
 @Composable
-private fun HeaderSection(weights: List<Float>, totalWidth: Float, vm: MainViewModel) {
-    Column(modifier = Modifier.fillMaxWidth().background(Color(0xFFE0E0E0))) {
+private fun HeaderSection(
+    weights: List<Float>,
+    totalWidth: Float,
+    vm: MainViewModel,
+    onGroupRowHeight: (Float) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
 
-        // УРОВЕНЬ 1: Группы (ПАРАМЕТРЫ, БАЗА, КОНТРОЛЛЕР)
-        Row(modifier = Modifier.fillMaxWidth().height(28.dp)) {
-            // ПАРАМЕТРЫ: ресайзер после 4-го столбца (индекс 3)
+        // Уровень 1: Группы — замеряем высоту ТОЛЬКО этой строки
+        // Рисуем одну вертикальную линию: между ПАРАМЕТРЫ и БАЗА
+        // (позиция = доля весов первых 4 столбцов от общей суммы)
+        Row(modifier = Modifier
+            .fillMaxWidth()
+            .height(28.dp)
+            .background(ColorHeaderGroup)
+            .onGloballyPositioned { onGroupRowHeight(it.size.height.toFloat()) }
+            .drawWithContent {
+                drawContent()
+                val sw = 0.5.dp.toPx()
+                val total = weights.sum()
+                // X после столбцов №+Имя+Описание+Ед.изм
+                val x = (weights[0] + weights[1] + weights[2] + weights[3]) / total * size.width
+                drawLine(ColorBorder, Offset(x, 0f), Offset(x, size.height), sw)
+            }
+        ) {
             Box(modifier = Modifier.weight(weights[0] + weights[1] + weights[2] + weights[3]).fillMaxHeight()) {
-                GroupCell("ПАРАМЕТРЫ", Modifier.fillMaxSize())
-                VerticalResizer(onDrag = { delta -> vm.updateWeights(3, delta, totalWidth) })
+                GroupCell("ПАРАМЕТРЫ")
+                VerticalResizer { delta -> vm.updateWeights(3, delta, totalWidth) }
             }
-
-            // БАЗА: ресайзер после 6-го столбца (индекс 5)
             Box(modifier = Modifier.weight(weights[4] + weights[5]).fillMaxHeight()) {
-                GroupCell("БАЗА", Modifier.fillMaxSize())
-                VerticalResizer(onDrag = { delta -> vm.updateWeights(5, delta, totalWidth) })
+                GroupCell("БАЗА")
+                VerticalResizer { delta -> vm.updateWeights(5, delta, totalWidth) }
             }
-
-            // КОНТРОЛЛЕР: последний, ресайзер не нужен
             GroupCell("КОНТРОЛЛЕР", Modifier.weight(weights[6] + weights[7]).fillMaxHeight())
         }
 
-        // УРОВЕНЬ 2: Имена столбцов
-        Row(modifier = Modifier.fillMaxWidth().height(26.dp).background(Color(0xFFF5F5F5))) {
+        // Уровень 2: Заголовки столбцов
+        Row(modifier = Modifier.fillMaxWidth().height(26.dp).background(ColorHeaderCol)) {
             val titles = listOf("№", "Имя", "Описание", "Ед.изм", "hex", "Physical", "hex", "Physical")
             titles.forEachIndexed { index, title ->
                 Box(modifier = Modifier.weight(weights[index]).fillMaxHeight()) {
-                    DynamicHeaderCell(text = title)
+                    Box(
+                        modifier = Modifier.fillMaxSize()
+                            // Нижняя граница заголовка
+                            .drawBehind {
+                                val sw = 0.5.dp.toPx()
+                                drawLine(ColorBorder, Offset(0f, size.height), Offset(size.width, size.height), sw)
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            title,
+                            fontSize   = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign  = TextAlign.Center,
+                            maxLines   = 1,
+                            overflow   = TextOverflow.Ellipsis
+                        )
+                    }
                     if (index < titles.size - 1) {
-                        VerticalResizer(onDrag = { delta -> vm.updateWeights(index, delta, totalWidth) })
+                        VerticalResizer { delta -> vm.updateWeights(index, delta, totalWidth) }
                     }
                 }
             }
@@ -99,6 +169,109 @@ private fun HeaderSection(weights: List<Float>, totalWidth: Float, vm: MainViewM
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Строка параметра
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun ParameterRow(param: ParameterData, weights: List<Float>, onClick: () -> Unit) {
+    val hexMismatch  = param.hexBase.trim() != param.hexCtrl.trim()
+    val physMismatch = param.physBase.trim() != param.physCtrl.trim()
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(24.dp)
+            .background(if (param.isSelected) Color(0xFFB3E5FC) else Color.White)
+            // Только нижняя граница строки — вертикальные линии рисует родительский Box
+            .drawBehind {
+                val sw = 0.5.dp.toPx()
+                drawLine(ColorBorder, Offset(0f, size.height), Offset(size.width, size.height), sw)
+            }
+            .clickable { onClick() }
+    ) {
+        ReadOnlyCell(param.code,        weights[0], TextAlign.Center)
+        ReadOnlyCell(param.idName,      weights[1])
+        ReadOnlyCell(param.description, weights[2])
+        ReadOnlyCell(param.unit,        weights[3], TextAlign.Center)
+
+        val redColor  = Color(0xFFD32F2F)
+        val normColor = Color(0xFF212121)
+
+        EditableCell(weights[4], param.hexBase,  if (hexMismatch)  redColor else normColor) { param.hexBase  = it }
+        EditableCell(weights[5], param.physBase, if (physMismatch) redColor else normColor) { param.physBase = it }
+        EditableCell(weights[6], param.hexCtrl,  if (hexMismatch)  redColor else normColor) { param.hexCtrl  = it }
+        EditableCell(weights[7], param.physCtrl, if (physMismatch) redColor else normColor) { param.physCtrl = it }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Вспомогательные composable
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun GroupCell(text: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .drawBehind {
+                val sw = 0.5.dp.toPx()
+                drawLine(ColorBorder, Offset(0f, size.height), Offset(size.width, size.height), sw)
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun RowScope.ReadOnlyCell(
+    text: String,
+    weight: Float,
+    align: TextAlign = TextAlign.Start
+) {
+    Box(
+        modifier = Modifier
+            .weight(weight)
+            .fillMaxHeight()
+            .padding(horizontal = 4.dp),
+        contentAlignment = if (align == TextAlign.Center) Alignment.Center else Alignment.CenterStart
+    ) {
+        Text(
+            text,
+            fontSize  = 10.sp,
+            maxLines  = 1,
+            overflow  = TextOverflow.Ellipsis,
+            textAlign = align,
+            modifier  = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun RowScope.EditableCell(
+    weight: Float,
+    value: String,
+    textColor: Color,
+    onValueChange: (String) -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .weight(weight)
+            .fillMaxHeight()
+            .padding(horizontal = 2.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        BasicTextField(
+            value         = value,
+            onValueChange = onValueChange,
+            singleLine    = true,
+            textStyle     = TextStyle(fontSize = 10.sp, color = textColor),
+            modifier      = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+// Драггер — прозрачная зона справа от ячейки, перехватывает горизонтальный drag
 @Composable
 private fun BoxScope.VerticalResizer(onDrag: (Float) -> Unit) {
     Box(
@@ -109,73 +282,8 @@ private fun BoxScope.VerticalResizer(onDrag: (Float) -> Unit) {
             .zIndex(1f)
             .pointerHoverIcon(PointerIcon.Hand)
             .draggable(
-                state = rememberDraggableState { delta -> onDrag(delta) },
+                state       = rememberDraggableState { delta -> onDrag(delta) },
                 orientation = Orientation.Horizontal
             )
     )
-}
-
-@Composable
-private fun GroupCell(text: String, modifier: Modifier) {
-    Box(
-        modifier = modifier.drawTableBorder(),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(text, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
-private fun BoxScope.DynamicHeaderCell(text: String) {
-    Box(
-        modifier = Modifier.fillMaxSize().drawTableBorder(),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(text, fontSize = 10.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-    }
-}
-
-@Composable
-private fun ParameterRow(param: ParameterData, weights: List<Float>, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().height(24.dp)
-            .background(if (param.isSelected) Color(0xFFB3E5FC) else Color.White)
-            .clickable { onClick() }
-    ) {
-        DynamicReadOnlyCell(param.code, weights[0], align = TextAlign.Center)
-        DynamicReadOnlyCell(param.idName, weights[1])
-        DynamicReadOnlyCell(param.description, weights[2])
-        DynamicReadOnlyCell(param.unit, weights[3], align = TextAlign.Center)
-
-        EditableCell(weights[4], param.hexBase) { param.hexBase = it }
-        EditableCell(weights[5], param.physBase) { param.physBase = it }
-        EditableCell(weights[6], param.hexCtrl) { param.hexCtrl = it }
-        EditableCell(weights[7], param.physCtrl) { param.physCtrl = it }
-    }
-}
-
-@Composable
-private fun RowScope.DynamicReadOnlyCell(text: String, weight: Float, align: TextAlign = TextAlign.Start) {
-    Box(
-        modifier = Modifier.weight(weight).fillMaxHeight().drawTableBorder().padding(horizontal = 4.dp),
-        contentAlignment = if (align == TextAlign.Center) Alignment.Center else Alignment.CenterStart
-    ) {
-        Text(text, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = align, modifier = Modifier.fillMaxWidth())
-    }
-}
-
-@Composable
-private fun RowScope.EditableCell(weight: Float, value: String, onValueChange: (String) -> Unit) {
-    Box(
-        modifier = Modifier.weight(weight).fillMaxHeight().drawTableBorder().padding(horizontal = 2.dp),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            singleLine = true,
-            textStyle = TextStyle(fontSize = 10.sp),
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
 }
