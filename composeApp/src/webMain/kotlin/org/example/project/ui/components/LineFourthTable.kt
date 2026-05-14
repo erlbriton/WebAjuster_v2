@@ -12,7 +12,7 @@ import androidx.compose.ui.unit.dp
 import org.example.project.ui.TableConfig
 import org.example.project.utils.ManualAndAutoInputField
 import org.example.project.utils.TableIconButton
-import org.example.project.viewmodel.LocalMainViewModel
+import org.example.project.viewmodels.LocalMainViewModel
 
 // Правильный способ вызова JS в Kotlin Wasm
 @JsFun("(function() { var d = new Date(); var day = ('0' + d.getDate()).slice(-2); var month = ('0' + (d.getMonth() + 1)).slice(-2); var year = d.getFullYear(); return day + '.' + month + '.' + year; })")
