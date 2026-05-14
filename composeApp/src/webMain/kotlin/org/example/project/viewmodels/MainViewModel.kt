@@ -23,18 +23,47 @@ class MainViewModel {
     )
 
     fun updateWeights(index: Int, delta: Float, containerWidth: Float) {
-        if (containerWidth <= 0) return
-
+        if (containerWidth <= 0 || delta == 0f) return
         val weightDelta = delta / containerWidth
         val minWeight = 0.02f
 
-        if (index < colWeights.size - 1) {
-            val newCurrentWeight = (colWeights[index] + weightDelta).coerceAtLeast(minWeight)
-            val newNextWeight = (colWeights[index + 1] - weightDelta).coerceAtLeast(minWeight)
+        // Определяем, за какую границу тянем
+        when (index) {
+            // Тянем границу ГРУППЫ "ПАРАМЕТРЫ" (индексы 0,1,2,3)
+            3 -> {
+                val currentGroupW = colWeights[0] + colWeights[1] + colWeights[2] + colWeights[3]
+                val nextGroupW = colWeights[4] + colWeights[5] + colWeights[6] + colWeights[7]
 
-            // Чтобы сумма оставалась 1.0, меняем пару соседних весов
-            colWeights[index] = newCurrentWeight
-            colWeights[index + 1] = newNextWeight
+                if (currentGroupW + weightDelta > minWeight * 4 && nextGroupW - weightDelta > minWeight * 4) {
+                    val scaleCurrent = (currentGroupW + weightDelta) / currentGroupW
+                    val scaleNext = (nextGroupW - weightDelta) / nextGroupW
+
+                    for (i in 0..3) colWeights[i] *= scaleCurrent
+                    for (i in 4..7) colWeights[i] *= scaleNext
+                }
+            }
+            // Тянем границу ГРУППЫ "БАЗА" (индексы 4,5)
+            5 -> {
+                val currentGroupW = colWeights[4] + colWeights[5]
+                val nextGroupW = colWeights[6] + colWeights[7]
+
+                if (currentGroupW + weightDelta > minWeight * 2 && nextGroupW - weightDelta > minWeight * 2) {
+                    val scaleCurrent = (currentGroupW + weightDelta) / currentGroupW
+                    val scaleNext = (nextGroupW - weightDelta) / nextGroupW
+
+                    for (i in 4..5) colWeights[i] *= scaleCurrent
+                    for (i in 6..7) colWeights[i] *= scaleNext
+                }
+            }
+            // Обычное перетягивание одиночного столбца (в нижнем ряду)
+            else -> {
+                if (index < colWeights.size - 1) {
+                    val newCur = (colWeights[index] + weightDelta).coerceAtLeast(minWeight)
+                    val newNext = (colWeights[index + 1] - weightDelta).coerceAtLeast(minWeight)
+                    colWeights[index] = newCur
+                    colWeights[index + 1] = newNext
+                }
+            }
         }
     }
 
