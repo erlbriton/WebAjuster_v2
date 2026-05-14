@@ -12,6 +12,7 @@ import org.example.project.ui.components.*
 import org.example.project.viewmodel.MainViewModel
 import org.example.project.viewmodel.LocalMainViewModel
 import org.example.project.logic.HeaderActions
+import androidx.compose.material3.Text
 
 @Composable
 fun MainScreen() {
