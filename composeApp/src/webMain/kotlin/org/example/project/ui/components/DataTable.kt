@@ -24,13 +24,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import org.example.project.models.ParameterData
 import org.example.project.viewmodels.LocalMainViewModel
 import org.example.project.viewmodels.MainViewModel
 
 private val ColorBorder = Color(0xFF9E9E9E)
 
-// Отрисовка границ ячейки
 fun Modifier.drawTableBorder(right: Boolean = true, bottom: Boolean = true): Modifier = this.drawBehind {
     val strokeWidth = 0.5.dp.toPx()
     if (right) drawLine(ColorBorder, Offset(size.width, 0f), Offset(size.width, size.height), strokeWidth)
@@ -65,36 +65,33 @@ fun DataTable(modifier: Modifier = Modifier) {
 @Composable
 private fun HeaderSection(weights: List<Float>, totalWidth: Float, vm: MainViewModel) {
     Column(modifier = Modifier.fillMaxWidth().background(Color(0xFFE0E0E0))) {
-        // УРОВЕНЬ 1: Группы
+
+        // УРОВЕНЬ 1: Группы (ПАРАМЕТРЫ, БАЗА, КОНТРОЛЛЕР)
         Row(modifier = Modifier.fillMaxWidth().height(28.dp)) {
-            GroupCell("ПАРАМЕТРЫ", weights[0] + weights[1] + weights[2] + weights[3])
-            GroupCell("БАЗА", weights[4] + weights[5])
-            GroupCell("КОНТРОЛЛЕР", weights[6] + weights[7])
+            // ПАРАМЕТРЫ: ресайзер после 4-го столбца (индекс 3)
+            Box(modifier = Modifier.weight(weights[0] + weights[1] + weights[2] + weights[3]).fillMaxHeight()) {
+                GroupCell("ПАРАМЕТРЫ", Modifier.fillMaxSize())
+                VerticalResizer(onDrag = { delta -> vm.updateWeights(3, delta, totalWidth) })
+            }
+
+            // БАЗА: ресайзер после 6-го столбца (индекс 5)
+            Box(modifier = Modifier.weight(weights[4] + weights[5]).fillMaxHeight()) {
+                GroupCell("БАЗА", Modifier.fillMaxSize())
+                VerticalResizer(onDrag = { delta -> vm.updateWeights(5, delta, totalWidth) })
+            }
+
+            // КОНТРОЛЛЕР: последний, ресайзер не нужен
+            GroupCell("КОНТРОЛЛЕР", Modifier.weight(weights[6] + weights[7]).fillMaxHeight())
         }
 
-        // УРОВЕНЬ 2: Имена столбцов + Ресайзеры
+        // УРОВЕНЬ 2: Имена столбцов
         Row(modifier = Modifier.fillMaxWidth().height(26.dp).background(Color(0xFFF5F5F5))) {
             val titles = listOf("№", "Имя", "Описание", "Ед.изм", "hex", "Physical", "hex", "Physical")
-
             titles.forEachIndexed { index, title ->
                 Box(modifier = Modifier.weight(weights[index]).fillMaxHeight()) {
                     DynamicHeaderCell(text = title)
-
-                    // Ресайзер для изменения ширины (кроме последнего столбца)
                     if (index < titles.size - 1) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .width(8.dp)
-                                .align(Alignment.CenterEnd)
-                                .pointerHoverIcon(PointerIcon.Hand)
-                                .draggable(
-                                    state = rememberDraggableState { delta ->
-                                        vm.updateWeights(index, delta, totalWidth)
-                                    },
-                                    orientation = Orientation.Horizontal
-                                )
-                        )
+                        VerticalResizer(onDrag = { delta -> vm.updateWeights(index, delta, totalWidth) })
                     }
                 }
             }
@@ -103,9 +100,25 @@ private fun HeaderSection(weights: List<Float>, totalWidth: Float, vm: MainViewM
 }
 
 @Composable
-private fun RowScope.GroupCell(text: String, weight: Float) {
+private fun BoxScope.VerticalResizer(onDrag: (Float) -> Unit) {
     Box(
-        modifier = Modifier.weight(weight).fillMaxHeight().drawTableBorder(),
+        modifier = Modifier
+            .fillMaxHeight()
+            .width(8.dp)
+            .align(Alignment.CenterEnd)
+            .zIndex(1f)
+            .pointerHoverIcon(PointerIcon.Hand)
+            .draggable(
+                state = rememberDraggableState { delta -> onDrag(delta) },
+                orientation = Orientation.Horizontal
+            )
+    )
+}
+
+@Composable
+private fun GroupCell(text: String, modifier: Modifier) {
+    Box(
+        modifier = modifier.drawTableBorder(),
         contentAlignment = Alignment.Center
     ) {
         Text(text, fontSize = 11.sp, fontWeight = FontWeight.Bold)
