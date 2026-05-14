@@ -15,6 +15,7 @@ import org.example.project.viewmodels.MainViewModel
 import org.example.project.viewmodels.LocalMainViewModel
 import org.example.project.logic.HeaderActions
 import androidx.compose.material3.Text
+import org.example.project.components.HeaderTable
 
 @Composable
 fun MainScreen() {
