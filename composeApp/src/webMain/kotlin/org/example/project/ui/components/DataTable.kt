@@ -19,8 +19,6 @@ import androidx.compose.ui.unit.sp
 import org.example.project.models.ParameterData
 import org.example.project.viewmodels.LocalMainViewModel
 
-private val FIXED_WIDTH = 50.dp
-private val ARROW_SEP_WIDTH = 28.dp
 private val ColorBorder = Color(0xFF9E9E9E)
 
 @Composable
@@ -42,50 +40,59 @@ fun DataTable(modifier: Modifier = Modifier) {
 @Composable
 private fun HeaderSection(weights: List<Float>) {
     Column(modifier = Modifier.fillMaxWidth().background(Color(0xFFE0E0E0))) {
-        // УРОВЕНЬ 1: Группы (внутри HeaderSection)
+
+        // УРОВЕНЬ 1: Группы (ПАРАМЕТРЫ, БАЗА, КОНТРОЛЛЕР)
         Row(modifier = Modifier.fillMaxWidth().height(28.dp)) {
-            // ПАРАМЕТРЫ: Сумма №(50) + Имя(w0) + Описание(w1) + Ед.изм(50)
+            // ПАРАМЕТРЫ: Индексы 0, 1, 2, 3
             Box(
                 modifier = Modifier
-                    .width(FIXED_WIDTH * 2) // ОБЯЗАТЕЛЬНО * 2 (это № и Ед.изм)
-                    .weight(weights[0] + weights[1]) // Это Имя и Описание
+                    .weight(weights[0] + weights[1] + weights[2] + weights[3])
                     .fillMaxHeight()
                     .border(0.5.dp, ColorBorder),
                 contentAlignment = Alignment.Center
-            ) { Text("ПАРАМЕТРЫ", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+            ) {
+                Text("ПАРАМЕТРЫ", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
 
-            // БАЗА: Только веса для hex(w2) и Phys(w3)
-            Box(
-                modifier = Modifier
-                    .weight(weights[2] + weights[3])
-                    .fillMaxHeight()
-                    .border(0.5.dp, ColorBorder),
-                contentAlignment = Alignment.Center
-            ) { Text("БАЗА", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-
-            // КОНТРОЛЛЕР: Только веса для hex(w4) и Phys(w5)
+            // БАЗА: Индексы 4, 5
             Box(
                 modifier = Modifier
                     .weight(weights[4] + weights[5])
                     .fillMaxHeight()
                     .border(0.5.dp, ColorBorder),
                 contentAlignment = Alignment.Center
-            ) { Text("КОНТРОЛЛЕР", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+            ) {
+                Text("БАЗА", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+
+            // КОНТРОЛЛЕР: Индексы 6, 7
+            Box(
+                modifier = Modifier
+                    .weight(weights[6] + weights[7])
+                    .fillMaxHeight()
+                    .border(0.5.dp, ColorBorder),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("КОНТРОЛЛЕР", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
         }
 
-        // УРОВЕНЬ 2: Имена столбцов
+        // УРОВЕНЬ 2: Имена столбцов (Строго по порядку 0-7)
         Row(modifier = Modifier.fillMaxWidth().height(26.dp).background(Color(0xFFF5F5F5))) {
-            HeaderCell(width = FIXED_WIDTH, text = "№")
-            DynamicHeaderCell(weight = weights[0], text = "Имя")
-            DynamicHeaderCell(weight = weights[1], text = "Описание")
-            HeaderCell(width = FIXED_WIDTH, text = "Ед.изм")
-            DynamicHeaderCell(weight = weights[2], text = "hex")
-            DynamicHeaderCell(weight = weights[3], text = "Physical")
-            DynamicHeaderCell(weight = weights[4], text = "hex")
-            DynamicHeaderCell(weight = weights[5], text = "Physical")
+            DynamicHeaderCell(text = "№", weight = weights[0])
+            DynamicHeaderCell(text = "Имя", weight = weights[1])
+            DynamicHeaderCell(text = "Описание", weight = weights[2])
+            DynamicHeaderCell(text = "Ед.изм", weight = weights[3])
+
+            DynamicHeaderCell(text = "hex", weight = weights[4])
+            DynamicHeaderCell(text = "Physical", weight = weights[5])
+
+            DynamicHeaderCell(text = "hex", weight = weights[6])
+            DynamicHeaderCell(text = "Physical", weight = weights[7])
         }
     }
 }
+
 @Composable
 private fun ParameterRow(param: ParameterData, weights: List<Float>, onClick: () -> Unit) {
     Row(
@@ -93,55 +100,75 @@ private fun ParameterRow(param: ParameterData, weights: List<Float>, onClick: ()
             .background(if (param.isSelected) Color(0xFFB3E5FC) else Color.White)
             .clickable { onClick() }
     ) {
-        ReadOnlyCell(text = param.code, width = FIXED_WIDTH, align = TextAlign.Center)
-        DynamicReadOnlyCell(text = param.idName, weight = weights[0])
-        DynamicReadOnlyCell(text = param.description, weight = weights[1])
-        ReadOnlyCell(text = param.unit, width = FIXED_WIDTH, align = TextAlign.Center)
-        EditableCell(weight = weights[2], value = param.hexBase) { param.hexBase = it }
-        EditableCell(weight = weights[3], value = param.physBase) { param.physBase = it }
-        EditableCell(weight = weights[4], value = param.hexCtrl) { param.hexCtrl = it }
-        EditableCell(weight = weights[5], value = param.physCtrl) { param.physCtrl = it }
-    }
-}
+        DynamicReadOnlyCell(text = param.code, weight = weights[0], align = TextAlign.Center)
+        DynamicReadOnlyCell(text = param.idName, weight = weights[1])
+        DynamicReadOnlyCell(text = param.description, weight = weights[2])
+        DynamicReadOnlyCell(text = param.unit, weight = weights[3], align = TextAlign.Center)
 
-// Унифицированные методы отрисовки с явными границами
-@Composable
-private fun HeaderCell(width: androidx.compose.ui.unit.Dp, text: String) {
-    Box(modifier = Modifier.width(width).fillMaxHeight().border(0.5.dp, ColorBorder), contentAlignment = Alignment.Center) {
-        Text(text, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+        EditableCell(weight = weights[4], value = param.hexBase) { param.hexBase = it }
+        EditableCell(weight = weights[5], value = param.physBase) { param.physBase = it }
+
+        EditableCell(weight = weights[6], value = param.hexCtrl) { param.hexCtrl = it }
+        EditableCell(weight = weights[7], value = param.physCtrl) { param.physCtrl = it }
     }
 }
 
 @Composable
-private fun RowScope.DynamicHeaderCell(weight: Float, text: String) {
-    Box(modifier = Modifier.weight(weight).fillMaxHeight().border(0.5.dp, ColorBorder), contentAlignment = Alignment.Center) {
-        Text(text, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-@Composable
-private fun ReadOnlyCell(text: String, width: androidx.compose.ui.unit.Dp, align: TextAlign) {
-    Box(modifier = Modifier.width(width).fillMaxHeight().border(0.5.dp, ColorBorder).padding(horizontal = 4.dp), contentAlignment = Alignment.CenterStart) {
-        Text(text, fontSize = 10.sp, textAlign = align, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable
-private fun RowScope.DynamicReadOnlyCell(text: String, weight: Float) {
-    Box(modifier = Modifier.weight(weight).fillMaxHeight().border(0.5.dp, ColorBorder).padding(horizontal = 4.dp), contentAlignment = Alignment.CenterStart) {
-        Text(text, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+private fun RowScope.DynamicReadOnlyCell(
+    text: String,
+    weight: Float,
+    align: TextAlign = TextAlign.Start
+) {
+    Box(
+        modifier = Modifier
+            .weight(weight)
+            .fillMaxHeight()
+            .border(0.5.dp, ColorBorder)
+            .padding(horizontal = 4.dp),
+        contentAlignment = if (align == TextAlign.Center) Alignment.Center else Alignment.CenterStart
+    ) {
+        Text(
+            text = text,
+            fontSize = 10.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = align,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
 @Composable
 private fun RowScope.EditableCell(weight: Float, value: String, onValueChange: (String) -> Unit) {
-    Box(modifier = Modifier.weight(weight).fillMaxHeight().border(0.5.dp, ColorBorder).padding(horizontal = 2.dp), contentAlignment = Alignment.CenterStart) {
+    Box(
+        modifier = Modifier.weight(weight).fillMaxHeight().border(0.5.dp, ColorBorder).padding(horizontal = 2.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
             singleLine = true,
             textStyle = TextStyle(fontSize = 10.sp),
             modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun RowScope.DynamicHeaderCell(text: String, weight: Float) {
+    Box(
+        modifier = Modifier
+            .weight(weight)
+            .fillMaxHeight()
+            .border(0.5.dp, ColorBorder)
+            .background(Color(0xFFF5F5F5)),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
         )
     }
 }
