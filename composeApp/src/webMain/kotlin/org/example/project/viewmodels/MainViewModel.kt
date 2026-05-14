@@ -4,28 +4,40 @@ import androidx.compose.runtime.*
 import org.example.project.models.ParameterData
 
 class MainViewModel {
-    // ── Поля состояния для шапки (используются в LineFifthTable и HeaderActions) ──
     var typeMechanism        by mutableStateOf("Не указан")
     var dateSet              by mutableStateOf("29.01.1964")
     var installationLocation by mutableStateOf("Цех №1")
 
-    // ── Список параметров ──────────────────────────────────────────────────
     val parameters = mutableStateListOf<ParameterData>()
 
-    // ── Веса шести динамических столбцов ──────────────────────────────────
-    // [0]Имя, [1]Описание | [2]hex(База), [3]Phys(База) | [4]hex(Контр), [5]Phys(Контр)
+    // Веса 8 столбцов. Сумма = 1.0
     val colWeights = mutableStateListOf<Float>(
-        0.05f,   // 0: № (5%)
-        0.15f,   // 1: Имя (15%)
-        0.30f,   // 2: Описание (30%) - было 0.35
-        0.05f,   // 3: Ед.изм (5%)
-        0.1125f, // 4: hex База (11.25%)
-        0.1125f, // 5: Phys База (11.25%)
-        0.1125f, // 6: hex Контр (11.25%)
-        0.1125f  // 7: Phys Контр (11.25%)
+        0.05f,   // 0: №
+        0.15f,   // 1: Имя
+        0.30f,   // 2: Описание
+        0.05f,   // 3: Ед.изм
+        0.1125f, // 4: hex База
+        0.1125f, // 5: Phys База
+        0.1125f, // 6: hex Контр
+        0.1125f  // 7: Phys Контр
     )
 
-    // ── Выделенная строка ─────────────────────────────────────────────────
+    fun updateWeights(index: Int, delta: Float, containerWidth: Float) {
+        if (containerWidth <= 0) return
+
+        val weightDelta = delta / containerWidth
+        val minWeight = 0.02f
+
+        if (index < colWeights.size - 1) {
+            val newCurrentWeight = (colWeights[index] + weightDelta).coerceAtLeast(minWeight)
+            val newNextWeight = (colWeights[index + 1] - weightDelta).coerceAtLeast(minWeight)
+
+            // Чтобы сумма оставалась 1.0, меняем пару соседних весов
+            colWeights[index] = newCurrentWeight
+            colWeights[index + 1] = newNextWeight
+        }
+    }
+
     var selectedCode by mutableStateOf<String?>(null)
         private set
 
@@ -34,8 +46,6 @@ class MainViewModel {
         selectedCode = code
     }
 
-    // ── Массовое копирование ───────────────────────────────────────────────
-    /** БАЗА → КОНТРОЛЛЕР */
     fun copyBaseToController() {
         parameters.forEach { p ->
             p.hexCtrl  = p.hexBase
@@ -43,7 +53,6 @@ class MainViewModel {
         }
     }
 
-    /** КОНТРОЛЛЕР → БАЗА */
     fun copyControllerToBase() {
         parameters.forEach { p ->
             p.hexBase  = p.hexCtrl
@@ -51,7 +60,6 @@ class MainViewModel {
         }
     }
 
-    // ── Загрузка данных ──────────────────────────────────────────────────
     init {
         loadSampleData()
     }
