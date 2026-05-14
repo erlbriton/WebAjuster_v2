@@ -20,7 +20,6 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.*
-import androidx.compose.material3.ToggleFloatingActionButtonDefaults.iconColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,14 +29,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 //import org.example.project.actions.HeaderActions
-//import org.example.project.actionsButton.HeaderActionsButtons
-import org.example.project.logic.HeaderActions
+//import org.example.project.logic.HeaderActionsButtons
+import org.example.project.logic.HeaderActionsInterface
 import org.example.project.ui.TableConfig
 import org.example.project.utils.TableIconButton
 import org.example.project.utils.UniversalMenuItem
@@ -50,7 +47,7 @@ import org.example.project.viewmodels.LocalMainViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HeaderTable(
-    actions: HeaderActions,
+    actions: HeaderActionsInterface,
     thickness: Dp = TableConfig.lineThickness,
     color: Color = TableConfig.lineColor
 ) {

@@ -13,8 +13,7 @@ import androidx.compose.ui.unit.dp
 import org.example.project.ui.components.*
 import org.example.project.viewmodels.MainViewModel
 import org.example.project.viewmodels.LocalMainViewModel
-import org.example.project.logic.HeaderActions
-import androidx.compose.material3.Text
+import org.example.project.logic.HeaderActionsInterface
 import org.example.project.components.HeaderTable
 
 @Composable
@@ -25,7 +24,7 @@ fun MainScreen() {
     var sidebarWidth      by remember { mutableStateOf(200.dp) }
 
     val headerActions = remember {
-        object : HeaderActions {
+        object : HeaderActionsInterface {
             override fun onSearch() {}
             override fun onExel() {}
             override fun onTerminalOpen() {}
