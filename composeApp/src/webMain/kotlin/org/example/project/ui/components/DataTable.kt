@@ -119,7 +119,7 @@ private fun HeaderSection(
             .onGloballyPositioned { onGroupRowHeight(it.size.height.toFloat()) }
             .drawWithContent {
                 drawContent()
-                val sw = 0.5.dp.toPx()
+                val sw = 1.5.dp.toPx()
                 val total = weights.sum()
                 // X после столбцов №+Имя+Описание+Ед.изм (между ПАРАМЕТРЫ и БАЗА)
                 val x1 = (weights[0] + weights[1] + weights[2] + weights[3]) / total * size.width
