@@ -2,11 +2,15 @@ package org.example.project.viewmodels
 
 import androidx.compose.runtime.*
 import org.example.project.models.ParameterData
+import org.example.project.models.DeviceInfoIni
 
 class MainViewModel {
     var typeMechanism        by mutableStateOf("Не указан")
     var dateSet              by mutableStateOf("29.01.1964")
     var installationLocation by mutableStateOf("Цех №1")
+
+    // Состояние текущего устройства (для передачи в LineThirdTable)
+    var currentDevice by mutableStateOf<DeviceInfoIni?>(null)
 
     val parameters = mutableStateListOf<ParameterData>()
 
@@ -21,6 +25,21 @@ class MainViewModel {
         0.1125f, // 6: hex Контр
         0.1125f  // 7: Phys Контр
     )
+
+    /**
+     * Основная функция загрузки данных из парсера
+     */
+    fun updateFromDevice(info: DeviceInfoIni) {
+        currentDevice = info
+        typeMechanism = info.Description
+        installationLocation = info.location
+        dateSet = info.LastDateTime
+
+        // Очищаем старые данные и добавляем новые параметры (RAM + FLASH)
+        parameters.clear()
+        parameters.addAll(info.flashParameters)
+        parameters.addAll(info.ramParameters)
+    }
 
     fun updateWeights(index: Int, delta: Float, containerWidth: Float) {
         if (containerWidth <= 0 || delta == 0f) return
@@ -94,13 +113,7 @@ class MainViewModel {
     }
 
     fun loadSampleData() {
-        // Очищаем текущий список, чтобы таблица стала пустой
         parameters.clear()
-
-        // В будущем здесь будет вызов:
-        // val realData = repository.getData()
-        // parameters.addAll(realData)
-
         println("Таблица очищена и готова к загрузке реальных данных.")
     }
 }

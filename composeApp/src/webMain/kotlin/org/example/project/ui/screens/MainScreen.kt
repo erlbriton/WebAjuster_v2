@@ -7,34 +7,37 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import org.example.project.ui.components.*
 import org.example.project.viewmodels.MainViewModel
 import org.example.project.viewmodels.LocalMainViewModel
-import org.example.project.logic.HeaderActionsButtons // Импортируем твой класс
+import org.example.project.logic.HeaderActionsButtons
 import org.example.project.components.HeaderTable
 import org.example.project.models.DeviceInfoIni
 
 @Composable
 fun MainScreen() {
-    // 1. Инициализируем ViewModel и Scope
     val viewModel = remember { MainViewModel() }
     val scope = rememberCoroutineScope()
 
-    // 2. Состояния для размеров и диалогов
-    var totalContentWidth by remember { mutableStateOf(900.dp) }
-    var sidebarWidth      by remember { mutableStateOf(200.dp) }
-    var errorMessage      by remember { mutableStateOf("") }
-    var showErrorDialog   by remember { mutableStateOf(false) }
+    // Состояния для размеров
+    var screenWidth by remember { mutableStateOf(0f) }
+    var sidebarWidth by remember { mutableStateOf(200.dp) }
 
-    // 3. Создаем "двигатель" логики. Теперь scope не будет серым!
+    // Начальное смещение для левого сплиттера, чтобы таблица была 0.4 от окна
+    // Мы вычислим это через weight, чтобы не гадать с пикселями
+    var leftWeight by remember { mutableStateOf(0.6f) }
+
+    var errorMessage by remember { mutableStateOf("") }
+    var showErrorDialog by remember { mutableStateOf(false) }
+
     val headerActions = remember(scope, viewModel) {
         HeaderActionsButtons(
             mainViewModel = viewModel,
             scope = scope,
             onDeviceLoaded = { info ->
-                // Сюда код придет, когда файл выбран и распарсен
-                println("DEBUG: Устройство подгружено в UI: ${info.Description}")
+                viewModel.updateFromDevice(info)
             },
             ShowError = { message ->
                 errorMessage = message
@@ -43,49 +46,61 @@ fun MainScreen() {
         )
     }
 
-    // 4. Основная верстка
     CompositionLocalProvider(LocalMainViewModel provides viewModel) {
-        Row(modifier = Modifier.fillMaxSize().background(Color.White)) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.White)
+                // Запоминаем общую ширину окна для расчетов драга
+                .onGloballyPositioned { screenWidth = it.size.width.toFloat() }
+        ) {
 
-            // Распорка слева (центрируем таблицу)
-            Spacer(modifier = Modifier.weight(1f))
-
-            // Левая граница-сплиттер (меняет общую ширину)
+            // ЛЕВАЯ ЧАСТЬ: Пустота (0.6 от экрана по умолчанию)
             Box(
                 modifier = Modifier
-                    .width(6.dp)
+                    .weight(leftWeight)
                     .fillMaxHeight()
-                    .background(Color.Gray.copy(alpha = 0.3f))
-                    .pointerInput(Unit) {
+                    .background(Color.White)
+            )
+
+            // ЛЕВЫЙ СПЛИТТЕР (Граница всей таблицы)
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .fillMaxHeight()
+                    .background(Color.LightGray)
+                    .pointerInput(screenWidth) {
                         detectDragGestures { change, dragAmount ->
                             change.consume()
-                            totalContentWidth -= dragAmount.x.toDp()
+                            if (screenWidth > 0) {
+                                // Пересчитываем weight в зависимости от движения мыши
+                                val deltaWeight = dragAmount.x / screenWidth
+                                leftWeight = (leftWeight + deltaWeight).coerceIn(0.1f, 0.9f)
+                            }
                         }
                     }
             )
 
-            // Весь рабочий блок таблицы
+            // ПРАВАЯ ЧАСТЬ: Приложение (0.4 от экрана по умолчанию)
             Column(
                 modifier = Modifier
-                    .width(totalContentWidth)
+                    .weight(1f - leftWeight)
                     .fillMaxHeight()
+                    .background(Color.White)
             ) {
-                // ШАПКА: Передаем сюда наши активные действия
                 HeaderTable(actions = headerActions)
 
                 Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
 
-                    // САЙДБАР (Список устройств слева)
+                    // САЙДБАР
                     Box(
                         modifier = Modifier
                             .width(sidebarWidth)
                             .fillMaxHeight()
-                            .background(Color(0xFFF0F0F0))
-                    ) {
-                        // Здесь в будущем будет список устройств из devicesMap
-                    }
+                            .background(Color(0xFFF5F5F5))
+                    )
 
-                    // СПЛИТТЕР (Между сайдбаром и основной частью)
+                    // СПЛИТТЕР САЙДБАРА
                     Box(
                         modifier = Modifier
                             .width(4.dp)
@@ -101,7 +116,7 @@ fun MainScreen() {
                             }
                     )
 
-                    // ПРАВАЯ ЧАСТЬ: Таблицы параметров
+                    // ТАБЛИЦЫ
                     Column(
                         modifier = Modifier
                             .weight(1f)
@@ -109,23 +124,18 @@ fun MainScreen() {
                             .background(Color.White)
                     ) {
                         LineTwoTable()
-                        LineThirdTable(selectedDevice = null)
+                        LineThirdTable(selectedDevice = viewModel.currentDevice)
                         LineFourthTable()
-                        // В LineFifthTable тоже можно передать actions, если там кнопка "Обновить"
                         LineFifthTable()
 
-                        // ОСНОВНАЯ ТАБЛИЦА ДАННЫХ
-                        DataTable(modifier = Modifier.fillMaxSize())
+                        DataTable(modifier = Modifier.weight(1f).fillMaxWidth())
                     }
                 }
             }
         }
     }
 
-    // 5. Диалог ошибки (если файл не подошел)
     if (showErrorDialog) {
-        // Здесь можно вставить AlertDialog, если он подключен в проекте
         println("ERROR: $errorMessage")
-        // Не забудь сбрасывать: showErrorDialog = false
     }
 }
