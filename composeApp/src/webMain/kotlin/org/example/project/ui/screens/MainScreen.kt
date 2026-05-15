@@ -1,5 +1,3 @@
-//MainScreen.kt
-
 package org.example.project.ui.screens
 
 import androidx.compose.foundation.background
@@ -13,60 +11,51 @@ import androidx.compose.ui.unit.dp
 import org.example.project.ui.components.*
 import org.example.project.viewmodels.MainViewModel
 import org.example.project.viewmodels.LocalMainViewModel
-import org.example.project.logic.HeaderActionsInterface
+import org.example.project.logic.HeaderActionsButtons // Импортируем твой класс
 import org.example.project.components.HeaderTable
 import org.example.project.models.DeviceInfoIni
 
 @Composable
 fun MainScreen() {
+    // 1. Инициализируем ViewModel и Scope
     val viewModel = remember { MainViewModel() }
+    val scope = rememberCoroutineScope()
 
+    // 2. Состояния для размеров и диалогов
     var totalContentWidth by remember { mutableStateOf(900.dp) }
     var sidebarWidth      by remember { mutableStateOf(200.dp) }
+    var errorMessage      by remember { mutableStateOf("") }
+    var showErrorDialog   by remember { mutableStateOf(false) }
 
-    val headerActions = remember {
-        object : HeaderActionsInterface {
-            override fun onUpdate() {
-
+    // 3. Создаем "двигатель" логики. Теперь scope не будет серым!
+    val headerActions = remember(scope, viewModel) {
+        HeaderActionsButtons(
+            mainViewModel = viewModel,
+            scope = scope,
+            onDeviceLoaded = { info ->
+                // Сюда код придет, когда файл выбран и распарсен
+                println("DEBUG: Устройство подгружено в UI: ${info.Description}")
+            },
+            ShowError = { message ->
+                errorMessage = message
+                showErrorDialog = true
             }
-
-            override fun onSearch() {}
-            override fun onExel() {}
-            override fun onOpenOscillograph() {
-
-            }
-
-            override fun onTerminalOpen() {}
-            override fun onFileOration() {}
-            override fun onBlackBox() {}
-            override fun onHelp(topic: String) {
-
-            }
-
-            override fun onMemoryChanged(type: String) {
-
-            }
-
-            override fun onPickFileRequest() {}
-            override fun onPickDirectoryRequest() {}
-            override fun onDeviceDataLoaded(info: DeviceInfoIni) {
-
-            }
-        }
+        )
     }
 
+    // 4. Основная верстка
     CompositionLocalProvider(LocalMainViewModel provides viewModel) {
         Row(modifier = Modifier.fillMaxSize().background(Color.White)) {
 
-            // Распорка слева
+            // Распорка слева (центрируем таблицу)
             Spacer(modifier = Modifier.weight(1f))
 
-            // Левая граница (активная, меняет ширину всей таблицы)
+            // Левая граница-сплиттер (меняет общую ширину)
             Box(
                 modifier = Modifier
                     .width(6.dp)
                     .fillMaxHeight()
-                    .background(Color.Gray)
+                    .background(Color.Gray.copy(alpha = 0.3f))
                     .pointerInput(Unit) {
                         detectDragGestures { change, dragAmount ->
                             change.consume()
@@ -75,26 +64,28 @@ fun MainScreen() {
                     }
             )
 
-            // Весь рабочий блок
+            // Весь рабочий блок таблицы
             Column(
                 modifier = Modifier
                     .width(totalContentWidth)
                     .fillMaxHeight()
             ) {
-                // Шапка
+                // ШАПКА: Передаем сюда наши активные действия
                 HeaderTable(actions = headerActions)
 
                 Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
 
-                    // Сайдбар (список устройств)
+                    // САЙДБАР (Список устройств слева)
                     Box(
                         modifier = Modifier
                             .width(sidebarWidth)
                             .fillMaxHeight()
                             .background(Color(0xFFF0F0F0))
-                    )
+                    ) {
+                        // Здесь в будущем будет список устройств из devicesMap
+                    }
 
-                    // Сплиттер между сайдбаром и таблицей
+                    // СПЛИТТЕР (Между сайдбаром и основной частью)
                     Box(
                         modifier = Modifier
                             .width(4.dp)
@@ -110,7 +101,7 @@ fun MainScreen() {
                             }
                     )
 
-                    // Таблица параметров
+                    // ПРАВАЯ ЧАСТЬ: Таблицы параметров
                     Column(
                         modifier = Modifier
                             .weight(1f)
@@ -120,13 +111,21 @@ fun MainScreen() {
                         LineTwoTable()
                         LineThirdTable(selectedDevice = null)
                         LineFourthTable()
+                        // В LineFifthTable тоже можно передать actions, если там кнопка "Обновить"
                         LineFifthTable()
 
-                        // ── ТАБЛИЦА ДАННЫХ (DataTable) ──────────────────
+                        // ОСНОВНАЯ ТАБЛИЦА ДАННЫХ
                         DataTable(modifier = Modifier.fillMaxSize())
                     }
                 }
             }
         }
+    }
+
+    // 5. Диалог ошибки (если файл не подошел)
+    if (showErrorDialog) {
+        // Здесь можно вставить AlertDialog, если он подключен в проекте
+        println("ERROR: $errorMessage")
+        // Не забудь сбрасывать: showErrorDialog = false
     }
 }

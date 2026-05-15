@@ -8,6 +8,10 @@ import org.example.project.utils.pickDirectory
 import org.example.project.utils.pickSingleFile
 import org.example.project.viewmodels.MainViewModel
 
+import androidx.compose.foundation.clickable
+
+
+
 class HeaderActionsButtons(
     private val mainViewModel: MainViewModel,
     private val scope: CoroutineScope,
@@ -84,13 +88,15 @@ class HeaderActionsButtons(
     }
     override fun onPickDirectoryRequest() {
         scope.launch {
-            delay(100)
-            // 1. Теперь ждем список файлов вместо одного объекта
-            val results: List<DeviceInfoIni>? = pickDirectory()
+            scope.launch {
+                delay(100)
+                // 1. Теперь ждем список файлов вместо одного объекта
+                val results: List<DeviceInfoIni>? = pickDirectory()
 
-            // 2. Если файлы найдены, передаем их в UI через существующий колбэк
-            results?.forEach { info ->
-                onDeviceDataLoaded(info)
+                // 2. Если файлы найдены, передаем их в UI через существующий колбэк
+                results?.forEach { info ->
+                    onDeviceDataLoaded(info)
+                }
             }
         }
     }

@@ -317,7 +317,7 @@ fun HeaderTable(
                             modifier = Modifier
                                 .fillMaxHeight()
                                 .clickable {
-                                    // Вызываем системный запрос на выбор файла
+                                    println("DEBUG: Клик по папке сработал!")
                                     actions.onPickFileRequest()
                                 }
                                 .padding(horizontal = 4.dp),
