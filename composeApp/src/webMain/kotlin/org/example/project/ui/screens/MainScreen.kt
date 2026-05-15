@@ -15,6 +15,7 @@ import org.example.project.viewmodels.MainViewModel
 import org.example.project.viewmodels.LocalMainViewModel
 import org.example.project.logic.HeaderActionsInterface
 import org.example.project.components.HeaderTable
+import org.example.project.models.DeviceInfoIni
 
 @Composable
 fun MainScreen() {
@@ -25,13 +26,32 @@ fun MainScreen() {
 
     val headerActions = remember {
         object : HeaderActionsInterface {
+            override fun onUpdate() {
+
+            }
+
             override fun onSearch() {}
             override fun onExel() {}
+            override fun onOpenOscillograph() {
+
+            }
+
             override fun onTerminalOpen() {}
             override fun onFileOration() {}
             override fun onBlackBox() {}
+            override fun onHelp(topic: String) {
+
+            }
+
+            override fun onMemoryChanged(type: String) {
+
+            }
+
             override fun onPickFileRequest() {}
             override fun onPickDirectoryRequest() {}
+            override fun onDeviceDataLoaded(info: DeviceInfoIni) {
+
+            }
         }
     }
 

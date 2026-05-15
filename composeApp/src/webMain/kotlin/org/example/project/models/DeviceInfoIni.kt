@@ -1,5 +1,9 @@
 package org.example.project.models
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+
 /**
  * Модель данных для отдельного параметра из секций [RAM], [FLASH] или [CD].
  * Содержит разобранные части строки после знака "=" и разделения символом "/".
@@ -8,21 +12,30 @@ package org.example.project.models
  * Расширенная модель параметра для таблицы.
  */
 data class ParameterData(
-    val code: String,         // Столбец "№" (например, p10000)
-    val idName: String,       // Столбец "Имя" (например, IstStart)
-    val description: String,  // Столбец "Описание" (бывшее "Значение")
-    val dataType: String,     // Тип (TWORD) - пока не выводим
-    val modbusReg: String,    //Номер регистра Modbus (например, r2000)м
-    val unit: String,         // Столбец "Ед. изм." (A)
+    val code: String,         // №
+    val idName: String,       // Имя
+    val description: String,  // Описание
+    val dataType: String,     // Тип
+    val modbusReg: String,    // Номер регистра
+    val unit: String,         // Ед. изм.
     val vars: Double = 1.0,
 
+    // Эти поля должны быть VAR, чтобы их можно было изменять при вводе в таблицу
+    // Мы задаем им начальные значения через конструктор
+    val initialHexBase: String = "",
+    val initialPhysBase: String = "",
+    val initialHexCtrl: String = "",
+    val initialPhysCtrl: String = ""
+) {
+    // А здесь мы создаем переменные, которые Compose будет "видеть" и перерисовывать
+    var hexBase by mutableStateOf(initialHexBase)
+    var physBase by mutableStateOf(initialPhysBase)
+    var hexCtrl by mutableStateOf(initialHexCtrl)
+    var physCtrl by mutableStateOf(initialPhysCtrl)
 
-    // Новые поля для данных
-    val hexBase: String = "",    // Столбец "hex" (База)
-    val physBase: String = "",   // Столбец "Physical" (База)
-    val hexCtrl: String = "",    // Столбец "hex" (Контроллер) - пока пусто
-    val physCtrl: String = ""    // Столбец "Physical" (Контроллер) - пока пусто
-)
+    // Состояние выделения строки
+    var isSelected by mutableStateOf(false)
+}
 
 data class DeviceInfoIni(
     val fileName: String,

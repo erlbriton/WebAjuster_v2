@@ -53,7 +53,7 @@ fun LineThirdTable(
                 contentAlignment = Alignment.CenterStart
             ) {
                 Text(
-                    text = selectedDevice?.name ?: "---", // Используем name из нашей заглушки модели
+                    text = selectedDevice?.fileName ?: "---", // Используем name из нашей заглушки модели
                     fontSize = 11.sp,
                     modifier = Modifier.padding(horizontal = 6.dp),
                     maxLines = 1,

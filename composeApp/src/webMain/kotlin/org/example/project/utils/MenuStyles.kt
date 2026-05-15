@@ -229,6 +229,7 @@ fun TableIconButton(
     backgroundColor: Color = Color.White,
     contentColor: Color = Color.Black,
     iconColor: Color = contentColor,
+    modifier: Modifier = Modifier, // 1. Добавили параметр
     onClick: () -> Unit
 ) {
     TooltipBox(
@@ -238,12 +239,14 @@ fun TableIconButton(
     ) {
         Box(modifier = Modifier.padding(start = 4.dp)) {
             Row(
-                modifier = Modifier
+                modifier = modifier // 2. Применяем внешний modifier (высоту)
                     .wrapContentWidth()
                     .clickable { onClick() }
                     .border(1.dp, borderColor)
                     .background(backgroundColor)
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                    // 3. Уменьшаем vertical padding с 4.dp до 0.dp,
+                    // чтобы он не конфликтовал с жесткой высотой
+                    .padding(horizontal = 12.dp, vertical = 0.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
             ) {
@@ -251,7 +254,7 @@ fun TableIconButton(
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.size(16.dp), // Иконка 16dp отлично влезет в 24-30dp
                         tint = iconColor
                     )
                     if (text != null) Spacer(modifier = Modifier.width(6.dp))

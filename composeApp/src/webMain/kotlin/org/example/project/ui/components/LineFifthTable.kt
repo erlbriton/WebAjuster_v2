@@ -65,6 +65,7 @@ fun LineFifthTable(
             TableIconButton(
                 icon = Icons.Default.Refresh,
                 text = "Обновить",
+                modifier = Modifier.height(24.dp),
                 iconColor = Color(0xFF00AA00),
                 tooltipText = "Обновить параметры из контроллера",
                 backgroundColor = Color.LightGray,
