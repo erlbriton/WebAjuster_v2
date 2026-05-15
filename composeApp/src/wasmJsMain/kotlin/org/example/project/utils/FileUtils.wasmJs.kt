@@ -59,7 +59,6 @@ private suspend fun readFileContent(fileHandle: JsAny): String {
     return jsFileText(file).await<JsString>().toString()
 }
 private fun parseIniContent(content: String, fileName: String): DeviceInfoIni? {
-    // 1. Разделяем на строки (сохраняем пустые строки для структуры)
     val lines = content.split("\n", "\r").map { it.trim() }
 
     val varsMap = mutableMapOf<String, Double>()
@@ -67,11 +66,15 @@ private fun parseIniContent(content: String, fileName: String): DeviceInfoIni? {
     var locationValue = ""
     var descriptionValue = ""
     var lastDateTimeValue = ""
+
+    // ПРАВИЛЬНО: Создаем три разных списка
     val flashParams = mutableListOf<ParameterData>()
+    val ramParams = mutableListOf<ParameterData>()
+    val cdParams = mutableListOf<ParameterData>()
 
     var currentSection = ""
 
-    // --- ПРОХОД 1: Собираем шкалы [vars] ---
+    // --- ПРОХОД 1: Собираем шкалы [vars] (оставляем как есть) ---
     for (line in lines) {
         if (line.startsWith("[") && line.endsWith("]")) {
             currentSection = line.uppercase()
@@ -102,36 +105,30 @@ private fun parseIniContent(content: String, fileName: String): DeviceInfoIni? {
                     line.startsWith("LastDateTime=", true) -> lastDateTimeValue = line.substringAfter("=")
                 }
             }
-            "[FLASH]", "[RAM]" -> {
+            // ПРАВИЛЬНО: Добавляем [CD] в список прослушивания
+            "[FLASH]", "[RAM]", "[CD]" -> {
                 if (line.contains("=")) {
                     val pCode = line.substringBefore("=").trim()
                     val rawData = line.substringAfter("=").trim()
-
-                    // ВАЖНО: Не фильтруем пустые части, чтобы индексы не съехали!
                     val parts = rawData.split("/")
 
                     if (parts.size >= 2) {
-                        // 1. Извлекаем HEX (значение перед последним /)
+                        // ... (код расчета HEX и физики оставляем без изменений) ...
                         val hexRaw = if (parts.last().isEmpty()) parts[parts.size - 2].trim() else parts.last().trim()
 
-                        // 2. Ищем текстовое значение (для списков типа x04#115200)
+                        // (Ваша логика расчета physicalValue...)
                         var physicalValue = ""
                         val enumEntry = parts.find { it.contains(hexRaw + "#") }
-
                         if (enumEntry != null) {
-                            // Если это список, вытаскиваем текст после #
                             physicalValue = enumEntry.substringAfter("#")
                         } else {
-                            // Если это обычное число, применяем шкалу
                             val scaleName = parts.getOrNull(6)?.trim() ?: ""
                             val scaleValue = varsMap[scaleName] ?: 1.0
-
                             val rawInt = hexRaw.removePrefix("x").toIntOrNull(16) ?: 0
                             val calculated = rawInt * scaleValue
-                            // Красиво форматируем: 28.0 -> "28", 28.5 -> "28.5"
                             physicalValue = if (calculated % 1.0 == 0.0) calculated.toInt().toString() else calculated.toString()
                         }
-                        println("DEBUG_PARSER: $pCode | HEX=$hexRaw | PHYS=$physicalValue")
+
                         val parameter = ParameterData(
                             code = pCode,
                             idName = parts.getOrNull(0) ?: "",
@@ -139,13 +136,18 @@ private fun parseIniContent(content: String, fileName: String): DeviceInfoIni? {
                             dataType = parts.getOrNull(2) ?: "",
                             modbusReg = parts.getOrNull(4) ?: "",
                             unit = parts.getOrNull(5) ?: "",
-                            // Добавляем префикс initial к полям данных:
                             initialHexBase = hexRaw,
                             initialPhysBase = physicalValue,
                             initialHexCtrl = "x0000",
                             initialPhysCtrl = "0"
                         )
-                        flashParams.add(parameter)
+
+                        // ПРАВИЛЬНО: Раскладываем по нужным корзинам
+                        when (currentSection) {
+                            "[FLASH]" -> flashParams.add(parameter)
+                            "[RAM]"   -> ramParams.add(parameter)
+                            "[CD]"    -> cdParams.add(parameter)
+                        }
                     }
                 }
             }
@@ -154,14 +156,16 @@ private fun parseIniContent(content: String, fileName: String): DeviceInfoIni? {
 
     if (idValue.isEmpty()) return null
 
+    // ПРАВИЛЬНО: Возвращаем объект со всеми тремя наполненными списками
     return DeviceInfoIni(
         fileName = fileName,
         id = idValue,
         location = locationValue,
         Description = descriptionValue,
         LastDateTime = lastDateTimeValue,
-        ramParameters = emptyList(),
-        flashParameters = flashParams
+        flashParameters = flashParams,
+        ramParameters = ramParams,
+        cdParameters = cdParams
     )
 }
 

@@ -37,6 +37,7 @@ fun MainScreen() {
             mainViewModel = viewModel,
             scope = scope,
             onDeviceLoaded = { info ->
+                // ОБЯЗАТЕЛЬНО: этот вызов отправляет данные во ViewModel
                 viewModel.updateFromDevice(info)
             },
             ShowError = { message ->

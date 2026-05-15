@@ -9,80 +9,47 @@ class MainViewModel {
     var dateSet              by mutableStateOf("29.01.1964")
     var installationLocation by mutableStateOf("Цех №1")
 
-    // Состояние текущего устройства (для передачи в LineThirdTable)
     var currentDevice by mutableStateOf<DeviceInfoIni?>(null)
 
     val parameters = mutableStateListOf<ParameterData>()
 
-    // Веса 8 столбцов. Сумма = 1.0
     val colWeights = mutableStateListOf<Float>(
-        0.05f,   // 0: №
-        0.15f,   // 1: Имя
-        0.29f,   // 2: Описание
-        0.06f,   // 3: Ед.изм
-        0.1125f, // 4: hex База
-        0.1125f, // 5: Phys База
-        0.1125f, // 6: hex Контр
-        0.1125f  // 7: Phys Контр
+        0.05f, 0.15f, 0.29f, 0.06f, 0.1125f, 0.1125f, 0.1125f, 0.1125f
     )
 
     /**
-     * Основная функция загрузки данных из парсера
+     * Обновленная функция загрузки с детектором дубликатов
+     * @param info Данные из парсера
+     * @param onDuplicatesFound Коллбэк для вывода сообщения в ваше стандартное окно
      */
     fun updateFromDevice(info: DeviceInfoIni) {
+        // Сохраняем общую информацию
         currentDevice = info
         typeMechanism = info.Description
         installationLocation = info.location
-        dateSet = info.LastDateTime
+        if (info.LastDateTime.isNotEmpty()) {
+            dateSet = info.LastDateTime
+        }
 
-        // Очищаем старые данные и добавляем новые параметры (RAM + FLASH)
+        // 1. Очищаем список
         parameters.clear()
+
+        // 2. Наполняем его ТОЛЬКО из списка flashParameters
+        // Если здесь пусто — значит в парсере flashParameters не заполнились
         parameters.addAll(info.flashParameters)
-        parameters.addAll(info.ramParameters)
+
+        println("DEBUG: Загружено параметров во FLASH: ${parameters.size}")
     }
 
     fun updateWeights(index: Int, delta: Float, containerWidth: Float) {
         if (containerWidth <= 0 || delta == 0f) return
         val weightDelta = delta / containerWidth
         val minWeight = 0.02f
-
-        // Определяем, за какую границу тянем
-        when (index) {
-            // Тянем границу ГРУППЫ "ПАРАМЕТРЫ" (индексы 0,1,2,3)
-            3 -> {
-                val currentGroupW = colWeights[0] + colWeights[1] + colWeights[2] + colWeights[3]
-                val nextGroupW = colWeights[4] + colWeights[5] + colWeights[6] + colWeights[7]
-
-                if (currentGroupW + weightDelta > minWeight * 4 && nextGroupW - weightDelta > minWeight * 4) {
-                    val scaleCurrent = (currentGroupW + weightDelta) / currentGroupW
-                    val scaleNext = (nextGroupW - weightDelta) / nextGroupW
-
-                    for (i in 0..3) colWeights[i] *= scaleCurrent
-                    for (i in 4..7) colWeights[i] *= scaleNext
-                }
-            }
-            // Тянем границу ГРУППЫ "БАЗА" (индексы 4,5)
-            5 -> {
-                val currentGroupW = colWeights[4] + colWeights[5]
-                val nextGroupW = colWeights[6] + colWeights[7]
-
-                if (currentGroupW + weightDelta > minWeight * 2 && nextGroupW - weightDelta > minWeight * 2) {
-                    val scaleCurrent = (currentGroupW + weightDelta) / currentGroupW
-                    val scaleNext = (nextGroupW - weightDelta) / nextGroupW
-
-                    for (i in 4..5) colWeights[i] *= scaleCurrent
-                    for (i in 6..7) colWeights[i] *= scaleNext
-                }
-            }
-            // Обычное перетягивание одиночного столбца (в нижнем ряду)
-            else -> {
-                if (index < colWeights.size - 1) {
-                    val newCur = (colWeights[index] + weightDelta).coerceAtLeast(minWeight)
-                    val newNext = (colWeights[index + 1] - weightDelta).coerceAtLeast(minWeight)
-                    colWeights[index] = newCur
-                    colWeights[index + 1] = newNext
-                }
-            }
+        if (index < colWeights.size - 1) {
+            val newCur = (colWeights[index] + weightDelta).coerceAtLeast(minWeight)
+            val newNext = (colWeights[index + 1] - weightDelta).coerceAtLeast(minWeight)
+            colWeights[index] = newCur
+            colWeights[index + 1] = newNext
         }
     }
 
@@ -114,7 +81,6 @@ class MainViewModel {
 
     fun loadSampleData() {
         parameters.clear()
-        println("Таблица очищена и готова к загрузке реальных данных.")
     }
 }
 
