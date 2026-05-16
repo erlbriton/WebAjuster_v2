@@ -17,6 +17,8 @@ import org.example.project.viewmodels.LocalMainViewModel
 import org.example.project.logic.HeaderActionsButtons
 import org.example.project.components.HeaderTable
 import org.example.project.models.DeviceInfoIni
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @Composable
 fun MainScreen() {
@@ -39,8 +41,26 @@ fun MainScreen() {
             mainViewModel = viewModel,
             scope = scope,
             onDeviceLoaded = { info ->
-                // ОБЯЗАТЕЛЬНО: этот вызов отправляет данные во ViewModel
-                viewModel.updateFromDevice(info)
+                // 1. Чистим старые дубликаты этого файла, если они были загружены ранее
+                viewModel.devicesMap.values.forEach { list ->
+                    list.removeAll { it.fileName == info.fileName }
+                }
+
+                // Исправлено: Удаляем пустые группы кроссплатформенным способом через итератор
+                val iterator = viewModel.devicesMap.entries.iterator()
+                while (iterator.hasNext()) {
+                    if (iterator.next().value.isEmpty()) {
+                        iterator.remove()
+                    }
+                }
+
+                // 2. Кладем файл в нужную папку-локацию дерева
+                viewModel.devicesMap.getOrPut(info.location) {
+                    androidx.compose.runtime.mutableStateListOf()
+                }.add(info)
+
+                // 3. Автоматически активируем только что загруженное устройство в таблице
+                viewModel.selectDevice(info)
             },
             ShowError = { message ->
                 errorMessage = message
@@ -95,8 +115,8 @@ fun MainScreen() {
 
                 Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
 
-                    // САЙДБАР
-                    Box(
+                    // САЙДБАР (Теперь здесь живое интерактивное дерево файлов)
+                    DeviceSidebar(
                         modifier = Modifier
                             .width(sidebarWidth)
                             .fillMaxHeight()
@@ -127,7 +147,11 @@ fun MainScreen() {
                             .background(Color.White)
                     ) {
                         LineTwoTable()
-                        LineThirdTable(selectedDevice = viewModel.currentDevice)
+
+                        // Читаем значение напрямую из стейта, исключая любые двусмысленности компилятора
+                        val activeDevice = viewModel.currentDeviceState.value
+                        LineThirdTable(selectedDevice = activeDevice)
+
                         LineFourthTable()
                         LineFifthTable()
 
