@@ -50,59 +50,88 @@ fun DataTable(modifier: Modifier = Modifier) {
     val vm      = LocalMainViewModel.current
     val weights = vm.colWeights
 
-    var totalWidth    by remember { mutableStateOf(0f) }
-    var headerHeight  by remember { mutableStateOf(0f) }  // высота только строки групп (ПАРАМЕТРЫ/БАЗА/КОНТРОЛЛЕР)
+    var headerHeight by remember { mutableStateOf(0f) }
 
-    // Вычисляем X-позиции вертикальных линий по весам
-    // Линии проходят после каждого столбца (кроме последнего)
-    val lineXPositions: List<Float> = remember(weights.toList(), totalWidth) {
-        val total = weights.sum()
-        val positions = mutableListOf<Float>()
-        var acc = 0f
-        for (i in 0 until weights.size - 1) {
-            acc += weights[i] / total
-            positions.add(acc * totalWidth)
-        }
-        positions
-    }
+    // 1. Создаем состояние прокрутки таблицы
+    val tableScrollState = androidx.compose.foundation.lazy.rememberLazyListState()
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .onGloballyPositioned { totalWidth = it.size.width.toFloat() }
-            // Рисуем вертикальные линии на ВСЮ высоту таблицы поверх контента
-            .drawWithContent {
-                drawContent()
-                val sw = 1.5.dp.toPx()
-                // Вертикальные линии начинаются НИЖЕ шапки и идут до конца таблицы
-                lineXPositions.forEach { x ->
-                    drawLine(ColorBorder, Offset(x, headerHeight), Offset(x, size.height), sw)
+    // ВНЕШНИЙ изолированный Box. Скроллбар живет здесь и НЕ жмет таблицу!
+    Box(modifier = modifier.fillMaxSize()) {
+
+        // ВНУТРЕННИЙ Box, где мы используем BoxWithConstraints вместо onGloballyPositioned.
+        // Это железно защищает от бесконечных циклов изменения размеров!
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val totalWidthPx = constraints.maxWidth.toFloat()
+
+            // Вычисляем X-позиции вертикальных линий БЕЗ использования side-эффектов стейта
+            val lineXPositions = remember(weights.toList(), totalWidthPx) {
+                val total = weights.sum()
+                val positions = mutableListOf<Float>()
+                var acc = 0f
+                for (i in 0 until weights.size - 1) {
+                    acc += weights[i] / total
+                    positions.add(acc * totalWidthPx)
+                }
+                positions
+            }
+
+            // Рисуем сетку линий
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .drawWithContent {
+                        drawContent()
+                        val sw = 1.5.dp.toPx()
+                        lineXPositions.forEach { x ->
+                            drawLine(ColorBorder, Offset(x, headerHeight), Offset(x, size.height), sw)
+                        }
+                    }
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // Шапка
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        HeaderSection(weights, totalWidthPx, vm, onGroupRowHeight = { headerHeight = it })
+                    }
+
+                    // Тело таблицы
+                    LazyColumn(
+                        state = tableScrollState,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        // ВРЕМЕННО УБИРАЕМ КЛЮЧИ ВООБЩЕ
+                        itemsIndexed(vm.parameters) { _, param ->
+                            Box(modifier = Modifier.fillMaxWidth().height(24.dp)) {
+                                ParameterRow(
+                                    param = param,
+                                    weights = weights,
+                                    modifier = Modifier.background(
+                                        if (param.isSelected) Color(0xFFA6E594) else Color.White
+                                    ),
+                                    onClick = { vm.selectRow(param.code) }
+                                )
+                            }
+                        }
+                    }
                 }
             }
-    ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-
-            // Шапка
-            Column(modifier = Modifier.fillMaxWidth()) {
-                HeaderSection(weights, totalWidth, vm, onGroupRowHeight = { headerHeight = it })
-            }
-
-            // Тело таблицы
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
-                itemsIndexed(vm.parameters, key = { _, p -> p.code }) { _, param ->
-
-                    ParameterRow(
-                        param = param,
-                        weights = weights,
-                        // Передаем фон отсюда. Теперь Compose будет обновлять его мгновенно
-                        modifier = Modifier.background(
-                            if (param.isSelected) Color(0xFFA6E594) else Color.White
-                        ),
-                        onClick = { vm.selectRow(param.code) }
-                    )
-                }
-            }
         }
+
+        // 2. Скроллбар накладывается ПОВЕРХ, как независимый слой, не сдвигая границы таблицы
+        VerticalScrollbar(
+            adapter = rememberScrollbarAdapter(tableScrollState),
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxHeight()
+                .padding(top = 54.dp), // строго под шапкой
+            style = ScrollbarStyle(
+                minimalHeight = 16.dp,
+                thickness = 5.dp,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                hoverDurationMillis = 300,
+                unhoverColor = Color.Green.copy(alpha = 0.5f),
+                hoverColor = Color.Cyan
+            )
+        )
     }
 }
 
