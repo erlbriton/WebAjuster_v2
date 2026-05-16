@@ -75,11 +75,12 @@ fun UniversalSelector(
             if (label.isNotEmpty()) {
                 Text(
                     text = label,
-                    color = Color.Black, // Исправил на черный для видимости на сером фоне
+                    color = Color.Black,
                     fontSize = 10.sp,
                     modifier = Modifier.padding(end = 2.dp)
                 )
             }
+            // Главный контейнер кнопки и меню — оставляем его чистым Box!
             Box {
                 Row(
                     modifier = Modifier
@@ -96,12 +97,14 @@ fun UniversalSelector(
                             .widthIn(min = minWidth),
                         contentAlignment = Alignment.Center
                     ) {
+                        // Используем Text, но принудительно центрируем его через свойства Compose
                         Text(
                             text = selectedOption.uppercase(),
                             color = Color.White,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                             maxLines = 1
                         )
                     }
@@ -132,7 +135,7 @@ fun UniversalSelector(
                         modifier = Modifier
                             .background(Color.White)
                             .border(1.dp, Color.Black)
-                            .widthIn(min = 120.dp)
+                            .widthIn(min = 120.dp) // Меню откроется компактно под кнопкой
                     ) {
                         options.forEach { option ->
                             UniversalMenuItem(
