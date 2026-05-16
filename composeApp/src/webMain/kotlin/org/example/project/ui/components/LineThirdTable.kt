@@ -3,11 +3,14 @@ package org.example.project.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -15,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.example.project.ui.TableConfig
 import org.example.project.models.DeviceInfoIni
+
 
 @Composable
 fun LineThirdTable(
@@ -48,16 +52,25 @@ fun LineThirdTable(
                     .weight(1f) // Занимает всё доступное пространство
                     .fillMaxHeight(0.8f)
                     .padding(end = 8.dp)
-                    .background(Color.White, shape = MaterialTheme.shapes.extraSmall)
+                    .background(Color.Gray, shape = MaterialTheme.shapes.extraSmall)
                     .border(width = 1.dp, color = Color.LightGray, shape = MaterialTheme.shapes.extraSmall),
-                contentAlignment = Alignment.CenterStart
+                contentAlignment = Alignment.CenterStart // Базовое выравнивание для содержимого
             ) {
-                Text(
-                    text = selectedDevice?.fileName ?: "---", // Используем name из нашей заглушки модели
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(horizontal = 6.dp),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                BasicTextField(
+                    value = selectedDevice?.id ?: "---",
+                    onValueChange = {}, // Пустая лямбда, так как поле только для чтения
+                    readOnly = true,    // Полностью запрещаем редактирование и вызов клавиатуры
+                    singleLine = true,
+                    textStyle = TextStyle(
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFAFAFA),
+                        // Принудительно заставляем движок Canvas выровнять текст по центру строки
+                        platformStyle = null
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 6.dp)
                 )
             }
         }
