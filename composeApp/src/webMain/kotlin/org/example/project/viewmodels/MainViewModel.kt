@@ -10,11 +10,11 @@ class MainViewModel {
     var currentVarsMap = mapOf<String, Double>()
     var typeMechanism        by mutableStateOf("Не указан")
     var dateSet              by mutableStateOf("29.01.1964")
-    var installationLocation by mutableStateOf("Цех №1")
+    var installationLocation by mutableStateOf("")
     var currentDevice by mutableStateOf<DeviceInfoIni?>(null)
     val parameters = mutableStateListOf<ParameterData>()
     val colWeights = mutableStateListOf<Float>(
-        0.05f, 0.15f, 0.29f, 0.06f, 0.1125f, 0.1125f, 0.1125f, 0.1125f
+        0.1f, 0.1f, 0.24f, 0.06f, 0.1125f, 0.1125f, 0.1125f, 0.1125f
     )
     /**
      * Обновленная функция загрузки с детектором дубликатов

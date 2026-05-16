@@ -242,6 +242,7 @@ private fun RowScope.ReadOnlyCell(
             maxLines   = 1,
             overflow   = TextOverflow.Ellipsis,
             textAlign  = align, // Центрирует текст внутри границ Text
+            fontWeight = FontWeight.Bold,
             modifier   = Modifier.fillMaxWidth()
         )
     }
@@ -269,6 +270,7 @@ private fun RowScope.EditableCell(
             textStyle     = TextStyle(
                 fontSize  = 10.sp,
                 color     = textColor,
+                fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center // Текст внутри поля ввода по центру
             ),
             modifier      = Modifier.fillMaxWidth()
