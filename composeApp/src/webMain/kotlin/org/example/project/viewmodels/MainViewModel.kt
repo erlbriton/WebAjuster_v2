@@ -33,14 +33,34 @@ class MainViewModel {
     // Объект текущего выбранного устройства для передачи в шапки/линии таблиц
    // var currentDevice by androidx.compose.runtime.mutableStateOf<org.example.project.models.DeviceInfoIni?>(null)
 
+//    fun selectDevice(device: org.example.project.models.DeviceInfoIni) {
+//        selectedDeviceId = device.id
+//        currentDeviceState.value = device
+//
+//        // СИНХРОНИЗАЦИЯ: Копируем данные из файла в переменные экрана
+//        installationLocation = device.location
+//        // Если в DeviceInfoIni есть дата и тип, их можно скопировать так же:
+//        // dateSet = device.date
+//        // typeMechanism = device.type
+//
+//        parameters.clear()
+//        parameters.addAll(device.flashParameters)
+//    }
+
     fun selectDevice(device: org.example.project.models.DeviceInfoIni) {
         selectedDeviceId = device.id
         currentDeviceState.value = device
 
-        // Очищаем текущие строки в таблице и загружаем новые параметры из выбранного файла
+        // Синхронизируем данные с экраном
+        installationLocation = device.location
+
+        // Железно прописываем значение (эта логика заставляет Compose вовремя обновлять UI)
+        typeMechanism = if (device.Description.isNotEmpty()) device.Description else ""
+
         parameters.clear()
         parameters.addAll(device.flashParameters)
     }
+
     /**
      * Обновленная функция загрузки с детектором дубликатов
      * @param info Данные из парсера
@@ -111,14 +131,29 @@ class MainViewModel {
     // --- ФУНКЦИИ АВТОПЕРЕСЧЕТА ДАННЫХ ---
 
     fun updateHexBase(param: ParameterData, newHex: String) {
-        val cleanHex = newHex.removePrefix("x").trim()
-        val rawInt = cleanHex.toIntOrNull(16) ?: 0
-        // Заменили .lowercase() на .uppercase() для перевода букв в верхний регистр
-        param.hexBase = "x" + rawInt.toString(16).uppercase().padStart(4, '0')
+        // 1. Если пользователь стёр вообще всё (пустая строка), оставляем префикс "x"
+        if (newHex.isEmpty()) {
+            param.hexBase = "x"
+            return
+        }
 
-        val scaleValue = currentVarsMap[param.scaleName] ?: 1.0
-        val calculated = rawInt * scaleValue
-        param.physBase = if (calculated % 1.0 == 0.0) calculated.toInt().toString() else calculated.toString()
+        // 2. Приводим к верхнему регистру для проверки, но префикс сделаем маленькой "x"
+        val upperInput = newHex.uppercase()
+        val cleanHex = if (upperInput.startsWith("X")) upperInput.removePrefix("X") else upperInput
+
+        // Ограничиваем длину чистых HEX-символов до 4 штук (например: FFFF)
+        if (cleanHex.length > 4) return
+
+        // Сохраняем обратно в модель с маленькой "x" на конце
+        param.hexBase = "x" + cleanHex
+
+        // 3. Пересчитываем физическое значение, только если введено валидное число
+        val rawInt = cleanHex.toIntOrNull(16)
+        if (rawInt != null) {
+            val scaleValue = currentVarsMap[param.scaleName] ?: 1.0
+            val calculated = rawInt * scaleValue
+            param.physBase = if (calculated % 1.0 == 0.0) calculated.toInt().toString() else calculated.toString()
+        }
     }
 
     fun updatePhysBase(param: ParameterData, newPhys: String) {
@@ -132,14 +167,24 @@ class MainViewModel {
     }
 
     fun updateHexCtrl(param: ParameterData, newHex: String) {
-        val cleanHex = newHex.removePrefix("x").trim()
-        val rawInt = cleanHex.toIntOrNull(16) ?: 0
-        // Заменили .lowercase() на .uppercase() для перевода букв в верхний регистр
-        param.hexCtrl = "x" + rawInt.toString(16).uppercase().padStart(4, '0')
+        if (newHex.isEmpty()) {
+            param.hexCtrl = "x"
+            return
+        }
 
-        val scaleValue = currentVarsMap[param.scaleName] ?: 1.0
-        val calculated = rawInt * scaleValue
-        param.physCtrl = if (calculated % 1.0 == 0.0) calculated.toInt().toString() else calculated.toString()
+        val upperInput = newHex.uppercase()
+        val cleanHex = if (upperInput.startsWith("X")) upperInput.removePrefix("X") else upperInput
+
+        if (cleanHex.length > 4) return
+
+        param.hexCtrl = "x" + cleanHex
+
+        val rawInt = cleanHex.toIntOrNull(16)
+        if (rawInt != null) {
+            val scaleValue = currentVarsMap[param.scaleName] ?: 1.0
+            val calculated = rawInt * scaleValue
+            param.physCtrl = if (calculated % 1.0 == 0.0) calculated.toInt().toString() else calculated.toString()
+        }
     }
 
     fun updatePhysCtrl(param: ParameterData, newPhys: String) {

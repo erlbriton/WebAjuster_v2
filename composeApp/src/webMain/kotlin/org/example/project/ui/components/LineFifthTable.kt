@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import org.example.project.models.DeviceInfoIni
 import org.example.project.ui.TableConfig
 import org.example.project.utils.ManualAndAutoInputField
 import org.example.project.utils.TableIconButton

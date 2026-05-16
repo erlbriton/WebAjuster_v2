@@ -98,11 +98,17 @@ private fun parseIniContent(content: String, fileName: String): DeviceInfoIni? {
 
         when (currentSection) {
             "[DEVICE]" -> {
-                when {
-                    line.startsWith("ID=", true) -> idValue = line.substringAfter("=")
-                    line.startsWith("Location=", true) -> locationValue = line.substringAfter("=")
-                    line.startsWith("Description=", true) -> descriptionValue = line.substringAfter("=")
-                    line.startsWith("LastDateTime=", true) -> lastDateTimeValue = line.substringAfter("=")
+                // Убираем все пробелы вокруг знака "=" для надёжной проверки ключа
+                if (line.contains("=")) {
+                    val key = line.substringBefore("=").trim().lowercase()
+                    val value = line.substringAfter("=").trim()
+
+                    when (key) {
+                        "id"           -> idValue = value
+                        "location"     -> locationValue = value
+                        "description"  -> descriptionValue = value // Теперь пробелы по бокам не страшны!
+                        "lastdatetime" -> lastDateTimeValue = value
+                    }
                 }
             }
             // ПРАВИЛЬНО: Добавляем [CD] в список прослушивания
