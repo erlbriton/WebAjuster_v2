@@ -1,3 +1,5 @@
+//DeviceInfoIni.kt
+
 package org.example.project.models
 
 import androidx.compose.runtime.getValue
@@ -25,7 +27,8 @@ data class ParameterData(
     val initialHexBase: String = "",
     val initialPhysBase: String = "",
     val initialHexCtrl: String = "",
-    val initialPhysCtrl: String = ""
+    val initialPhysCtrl: String = "",
+    val scaleName: String = ""
 ) {
     // А здесь мы создаем переменные, которые Compose будет "видеть" и перерисовывать
     var hexBase by mutableStateOf(initialHexBase)
@@ -45,7 +48,8 @@ data class DeviceInfoIni(
     val LastDateTime: String,
     val ramParameters: List<ParameterData> = emptyList(),
     val flashParameters: List<ParameterData> = emptyList(),
-    val cdParameters: List<ParameterData> = emptyList()
+    val cdParameters: List<ParameterData> = emptyList(),
+    val varsMap: Map<String, Double> = emptyMap()
 )
 
 data class PortData(

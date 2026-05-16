@@ -114,20 +114,28 @@ private fun parseIniContent(content: String, fileName: String): DeviceInfoIni? {
 
                     if (parts.size >= 2) {
                         // ... (код расчета HEX и физики оставляем без изменений) ...
-                        val hexRaw = if (parts.last().isEmpty()) parts[parts.size - 2].trim() else parts.last().trim()
+                        val fileHex = if (parts.last().isEmpty()) parts[parts.size - 2].trim() else parts.last().trim()
 
-                        // (Ваша логика расчета physicalValue...)
-                        var physicalValue = ""
-                        val enumEntry = parts.find { it.contains(hexRaw + "#") }
-                        if (enumEntry != null) {
-                            physicalValue = enumEntry.substringAfter("#")
-                        } else {
-                            val scaleName = parts.getOrNull(6)?.trim() ?: ""
-                            val scaleValue = varsMap[scaleName] ?: 1.0
-                            val rawInt = hexRaw.removePrefix("x").toIntOrNull(16) ?: 0
-                            val calculated = rawInt * scaleValue
-                            physicalValue = if (calculated % 1.0 == 0.0) calculated.toInt().toString() else calculated.toString()
-                        }
+// 2. Переводим его в число (из 16-ричной "x0014" получаем 10-тичное 20)
+                        val rawInt = fileHex.removePrefix("x").toIntOrNull(16) ?: 0
+
+// 3. СТРОГИЙ ФОРМАТ HEX: всегда делаем вид "x0014" (буква x + 4 знака)
+                        val hexString = rawInt.toString(16).lowercase()
+
+// 2. Дополняем нулями слева до 4 символов ("14" -> "0014") и добавляем префикс 'x'
+                        val hexRaw = "x" + hexString.padStart(4, '0')
+
+// 4. НАХОДИМ ШКАЛУ: берем имя шкалы строго из 6-й позиции в строке (например, "AINK")
+                        val scaleName = parts.getOrNull(6)?.trim() ?: ""
+
+// Ищем числовое значение этой шкалы в карте varsMap. Если не нашли — берем 1.0
+                        val scaleValue = varsMap[scaleName] ?: 1.0
+
+// 5. РАСЧЕТ PHYSICAL: умножаем наше число на коэффициент шкалы (20 * 0.001 = 0.02)
+                        val calculated = rawInt * scaleValue
+
+// Красиво форматируем (чтобы вместо "20.0" выводилось просто "20", а дробные оставались дробными)
+                        val physicalValue = if (calculated % 1.0 == 0.0) calculated.toInt().toString() else calculated.toString()
 
                         val parameter = ParameterData(
                             code = pCode,
@@ -136,6 +144,7 @@ private fun parseIniContent(content: String, fileName: String): DeviceInfoIni? {
                             dataType = parts.getOrNull(2) ?: "",
                             modbusReg = parts.getOrNull(4) ?: "",
                             unit = parts.getOrNull(5) ?: "",
+                            scaleName = scaleName, // Передаем имя найденной шкалы (например, AINK) в модель
                             initialHexBase = hexRaw,
                             initialPhysBase = physicalValue,
                             initialHexCtrl = "x0000",
@@ -156,7 +165,7 @@ private fun parseIniContent(content: String, fileName: String): DeviceInfoIni? {
 
     if (idValue.isEmpty()) return null
 
-    // ПРАВИЛЬНО: Возвращаем объект со всеми тремя наполненными списками
+    // ПРАВИЛЬНО: Возвращаем объект со всеми тремя наполненными списками и собранной картой шкал
     return DeviceInfoIni(
         fileName = fileName,
         id = idValue,
@@ -165,7 +174,8 @@ private fun parseIniContent(content: String, fileName: String): DeviceInfoIni? {
         LastDateTime = lastDateTimeValue,
         flashParameters = flashParams,
         ramParameters = ramParams,
-        cdParameters = cdParams
+        cdParameters = cdParams,
+        varsMap = varsMap // Добавляем передачу карты шкал внутрь объекта
     )
 }
 

@@ -177,6 +177,7 @@ private fun HeaderSection(
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 private fun ParameterRow(param: ParameterData, weights: List<Float>, onClick: () -> Unit) {
+    val vm = LocalMainViewModel.current // Добавили получение vm из LocalMainViewModel
     val hexMismatch  = param.hexBase.trim() != param.hexCtrl.trim()
     val physMismatch = param.physBase.trim() != param.physCtrl.trim()
     Row(
@@ -196,10 +197,10 @@ private fun ParameterRow(param: ParameterData, weights: List<Float>, onClick: ()
         val redColor  = Color(0xFFD32F2F)
         val normColor = Color(0xFF212121)
 
-        EditableCell(weights[4], param.hexBase,  if (hexMismatch)  redColor else normColor) { param.hexBase  = it }
-        EditableCell(weights[5], param.physBase, if (physMismatch) redColor else normColor) { param.physBase = it }
-        EditableCell(weights[6], param.hexCtrl,  if (hexMismatch)  redColor else normColor) { param.hexCtrl  = it }
-        EditableCell(weights[7], param.physCtrl, if (physMismatch) redColor else normColor) { param.physCtrl = it }
+        EditableCell(weights[4], param.hexBase,  if (hexMismatch)  redColor else normColor) { vm.updateHexBase(param, it) }
+        EditableCell(weights[5], param.physBase, if (physMismatch) redColor else normColor) { vm.updatePhysBase(param, it) }
+        EditableCell(weights[6], param.hexCtrl,  if (hexMismatch)  redColor else normColor) { vm.updateHexCtrl(param, it) }
+        EditableCell(weights[7], param.physCtrl, if (physMismatch) redColor else normColor) { vm.updatePhysCtrl(param, it) }
     }
 }
 
