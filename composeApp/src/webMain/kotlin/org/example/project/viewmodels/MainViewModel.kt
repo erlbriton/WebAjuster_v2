@@ -88,7 +88,8 @@ class MainViewModel {
     fun updateHexBase(param: ParameterData, newHex: String) {
         val cleanHex = newHex.removePrefix("x").trim()
         val rawInt = cleanHex.toIntOrNull(16) ?: 0
-        param.hexBase = "x" + rawInt.toString(16).lowercase().padStart(4, '0')
+        // Заменили .lowercase() на .uppercase() для перевода букв в верхний регистр
+        param.hexBase = "x" + rawInt.toString(16).uppercase().padStart(4, '0')
 
         val scaleValue = currentVarsMap[param.scaleName] ?: 1.0
         val calculated = rawInt * scaleValue
@@ -101,13 +102,15 @@ class MainViewModel {
         val scaleValue = currentVarsMap[param.scaleName] ?: 1.0
 
         val rawInt = if (scaleValue != 0.0) (physDouble / scaleValue).toInt() else 0
-        param.hexBase = "x" + rawInt.toString(16).lowercase().padStart(4, '0')
+        // Заменили .lowercase() на .uppercase() для перевода букв в верхний регистр
+        param.hexBase = "x" + rawInt.toString(16).uppercase().padStart(4, '0')
     }
 
     fun updateHexCtrl(param: ParameterData, newHex: String) {
         val cleanHex = newHex.removePrefix("x").trim()
         val rawInt = cleanHex.toIntOrNull(16) ?: 0
-        param.hexCtrl = "x" + rawInt.toString(16).lowercase().padStart(4, '0')
+        // Заменили .lowercase() на .uppercase() для перевода букв в верхний регистр
+        param.hexCtrl = "x" + rawInt.toString(16).uppercase().padStart(4, '0')
 
         val scaleValue = currentVarsMap[param.scaleName] ?: 1.0
         val calculated = rawInt * scaleValue
@@ -120,7 +123,8 @@ class MainViewModel {
         val scaleValue = currentVarsMap[param.scaleName] ?: 1.0
 
         val rawInt = if (scaleValue != 0.0) (physDouble / scaleValue).toInt() else 0
-        param.hexCtrl = "x" + rawInt.toString(16).lowercase().padStart(4, '0')
+        // Заменили .lowercase() на .uppercase() для перевода букв в верхний регистр
+        param.hexCtrl = "x" + rawInt.toString(16).uppercase().padStart(4, '0')
     }
 }
 

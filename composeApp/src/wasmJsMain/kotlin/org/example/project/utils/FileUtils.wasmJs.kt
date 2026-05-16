@@ -120,7 +120,7 @@ private fun parseIniContent(content: String, fileName: String): DeviceInfoIni? {
                         val rawInt = fileHex.removePrefix("x").toIntOrNull(16) ?: 0
 
 // 3. СТРОГИЙ ФОРМАТ HEX: всегда делаем вид "x0014" (буква x + 4 знака)
-                        val hexString = rawInt.toString(16).lowercase()
+                        val hexString = rawInt.toString(16).uppercase()
 
 // 2. Дополняем нулями слева до 4 символов ("14" -> "0014") и добавляем префикс 'x'
                         val hexRaw = "x" + hexString.padStart(4, '0')
