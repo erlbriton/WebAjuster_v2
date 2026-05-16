@@ -137,6 +137,7 @@ private fun parseIniContent(content: String, fileName: String): DeviceInfoIni? {
 // Красиво форматируем (чтобы вместо "20.0" выводилось просто "20", а дробные оставались дробными)
                         val physicalValue = if (calculated % 1.0 == 0.0) calculated.toInt().toString() else calculated.toString()
 
+                        val finalUnit = if (pCode == "4") "29.01.1964" else (parts.getOrNull(5) ?: "")
                         val parameter = ParameterData(
                             code = pCode,
                             idName = parts.getOrNull(0) ?: "",
