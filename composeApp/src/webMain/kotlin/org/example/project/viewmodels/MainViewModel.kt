@@ -102,8 +102,22 @@ class MainViewModel {
         private set
 
     fun selectRow(code: String) {
-        parameters.forEach { it.isSelected = (it.code == code) }
+        // 1. Сохраняем выбранный код, как и раньше
         selectedCode = code
+
+        // 2. Пробегаемся по индексам списка параметров
+        for (i in 0 until parameters.size) {
+            val param = parameters[i]
+            val shouldBeSelected = (param.code == code)
+
+            // Перерисовываем только то, что реально изменилось (старую выделенную строку и новую)
+            if (param.isSelected != shouldBeSelected) {
+                param.isSelected = shouldBeSelected
+
+                // Заменяем элемент в списке на самого себя — это триггер для Compose!
+                parameters[i] = param
+            }
+        }
     }
 
     fun copyBaseToController() {

@@ -90,7 +90,7 @@ fun DeviceSidebar(modifier: Modifier = Modifier) {
                             .fillMaxWidth()
                             .padding(start = 24.dp, end = 4.dp)
                             .background(
-                                if (isSelected) Color(0xFFCCE5FF) else Color.Transparent,
+                                if (isSelected) Color(0xFFA6E594) else Color.Transparent,
                                 RoundedCornerShape(2.dp)
                             )
                             .clickable {

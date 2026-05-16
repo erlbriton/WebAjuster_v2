@@ -90,7 +90,16 @@ fun DataTable(modifier: Modifier = Modifier) {
             // Тело таблицы
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 itemsIndexed(vm.parameters, key = { _, p -> p.code }) { _, param ->
-                    ParameterRow(param, weights) { vm.selectRow(param.code) }
+
+                    ParameterRow(
+                        param = param,
+                        weights = weights,
+                        // Передаем фон отсюда. Теперь Compose будет обновлять его мгновенно
+                        modifier = Modifier.background(
+                            if (param.isSelected) Color(0xFFA6E594) else Color.White
+                        ),
+                        onClick = { vm.selectRow(param.code) }
+                    )
                 }
             }
         }
@@ -175,20 +184,24 @@ private fun HeaderSection(
 // ─────────────────────────────────────────────────────────────────────────────
 // Строка параметра
 // ─────────────────────────────────────────────────────────────────────────────
-@Composable
-private fun ParameterRow(param: ParameterData, weights: List<Float>, onClick: () -> Unit) {
-    val vm = LocalMainViewModel.current // Добавили получение vm из LocalMainViewModel
+
+@Composable // Убедитесь, что над функцией стоит @Composable
+private fun ParameterRow(
+    param: ParameterData,
+    weights: List<Float>,
+    modifier: Modifier = Modifier, // 1. Добавили параметр
+    onClick: () -> Unit
+) {
+    val vm = LocalMainViewModel.current
     val hexMismatch  = param.hexBase.trim() != param.hexCtrl.trim()
     val physMismatch = param.physBase.trim() != param.physCtrl.trim()
+
     Row(
-        modifier = Modifier
+        modifier = modifier // 2. Применяем его ПЕРВЫМ (он принесет цвет фона из LazyColumn)
             .fillMaxWidth()
             .height(24.dp)
-            .background(if (param.isSelected) Color(0xFFB3E5FC) else Color.White)
-            // Горизонтальная линия удалена, вертикальные рисует DataTable
             .clickable { onClick() }
     ) {
-        // Все ячейки теперь используют центрирование по умолчанию
         ReadOnlyCell(param.code,        weights[0], TextAlign.Center)
         ReadOnlyCell(param.idName,      weights[1], TextAlign.Center)
         ReadOnlyCell(param.description, weights[2], TextAlign.Center)
