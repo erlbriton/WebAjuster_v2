@@ -32,9 +32,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 //import org.example.project.actions.HeaderActions
 //import org.example.project.logic.HeaderActionsButtons
 import org.example.project.logic.HeaderActionsInterface
+import org.example.project.logic.readDeviceIdentification
 import org.example.project.ui.TableConfig
 import org.example.project.utils.TableIconButton
 import org.example.project.utils.UniversalMenuItem
@@ -53,10 +55,22 @@ fun HeaderTable(
 ) {
     // Состояния для меню
     var expanded by remember { mutableStateOf(false) }
-    val menuItems = listOf("Обновить", "Серийные номера", "Место установки", "Тип механизма", "Дата последнего обслуживания", "Тип устройства")
+    val menuItems = listOf(
+        "Обновить",
+        "Серийные номера",
+        "Место установки",
+        "Тип механизма",
+        "Дата последнего обслуживания",
+        "Тип устройства"
+    )
 
     var clue by remember { mutableStateOf(false) }
-    val oscilligraphItems = listOf("Открыть осциллогаф подключенного устройства", "Открыть осциллограф", "Просмотреть осциллогамму", "Новый осциллограф")
+    val oscilligraphItems = listOf(
+        "Открыть осциллогаф подключенного устройства",
+        "Открыть осциллограф",
+        "Просмотреть осциллогамму",
+        "Новый осциллограф"
+    )
 
     var clueHelp by remember { mutableStateOf(false) }
     val helpItems = listOf("Ajuster Help", "About")
@@ -86,7 +100,9 @@ fun HeaderTable(
         ) {
             // --------------------------------КНОПКА ОБНОВИТЬ -------------------------------------
             TooltipBox(
-                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
+                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(
+                    TooltipAnchorPosition.Above
+                ),
                 tooltip = { PlainTooltip { Text("Обновить список устройств", fontSize = 12.sp) } },
                 state = rememberTooltipState()
             ) {
@@ -117,7 +133,9 @@ fun HeaderTable(
                             )
                         }
                         // РАЗДЕЛИТЕЛЬ
-                        Spacer(modifier = Modifier.fillMaxHeight().width(1.dp).background(Color.Blue))
+                        Spacer(
+                            modifier = Modifier.fillMaxHeight().width(1.dp).background(Color.Blue)
+                        )
                         // ПРАВАЯ ЧАСТЬ: Открытие меню
                         Box(
                             modifier = Modifier
@@ -161,12 +179,15 @@ fun HeaderTable(
                 }
             )
             //----------------------------------Отчеты  Exel----------------------------------------
-            TableIconButton(icon =Icons.AutoMirrored.Filled.ListAlt, tooltipText ="Генератор отчетов в Exel",
-                onClick = { actions.onExel()}
+            TableIconButton(
+                icon = Icons.AutoMirrored.Filled.ListAlt, tooltipText = "Генератор отчетов в Exel",
+                onClick = { actions.onExel() }
             )
             // --- 4. ОСЦИЛЛОГРАФ ---
             TooltipBox(
-                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
+                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(
+                    TooltipAnchorPosition.Above
+                ),
                 tooltip = { PlainTooltip { Text("Осциллограф", fontSize = 12.sp) } },
                 state = rememberTooltipState()
             ) {
@@ -250,16 +271,23 @@ fun HeaderTable(
             )
             //----------------------------Help---------------------------------------------------------------------
             TooltipBox(
-                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
+                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(
+                    TooltipAnchorPosition.Above
+                ),
                 tooltip = { PlainTooltip { Text("Help", fontSize = 12.sp) } },
                 state = rememberTooltipState()
             ) {
                 Box(modifier = Modifier.padding(start = 4.dp)) {
                     Row(
-                        modifier = Modifier.clickable { clueHelp = true }.border(1.dp, Color.Blue).background(Color.White).padding(horizontal = 4.dp, vertical = 2.dp),
+                        modifier = Modifier.clickable { clueHelp = true }.border(1.dp, Color.Blue)
+                            .background(Color.White).padding(horizontal = 4.dp, vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.MenuBook, null, modifier = Modifier.size(16.dp))
+                        Icon(
+                            Icons.AutoMirrored.Filled.MenuBook,
+                            null,
+                            modifier = Modifier.size(16.dp)
+                        )
                         Icon(Icons.Default.ArrowDropDown, null, modifier = Modifier.size(20.dp))
                     }
                     DropdownMenu(expanded = clueHelp, onDismissRequest = { clueHelp = false }) {
@@ -300,7 +328,9 @@ fun HeaderTable(
             )
             // ----------------------------Выбор папки/файла-----------------------------------------
             TooltipBox(
-                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
+                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(
+                    TooltipAnchorPosition.Above
+                ),
                 tooltip = { PlainTooltip { Text("Выбор файла", fontSize = 12.sp) } },
                 state = rememberTooltipState()
             ) {
@@ -390,14 +420,21 @@ fun HeaderTable(
             //----------------------Кнопка "ID"-----------------------------------------------------
             TableIconButton(
                 text = "ID",
-                tooltipText = "Получить  ID устройства",
+                tooltipText = "Получить ID устройства",
                 backgroundColor = Color(0xFFC2B7B7),
                 onClick = {
-                    actions.onFileOration()
+                    scope.launch {
+                        // Вызываем стандартный метод контракта,
+                        // а Compose сам подставит под него наш JS-код из файла выше!
+                        readDeviceIdentification() // Или замените на actions.onIdRequest(), если добавили метод в интерфейс
+                    }
                 }
             )
-            Spacer(modifier = Modifier.weight(1f))
+            HorizontalDivider(
+                modifier = Modifier.fillMaxWidth(),
+                thickness = thickness,
+                color = color
+            )
         }
-        HorizontalDivider(modifier = Modifier.fillMaxWidth(), thickness = thickness, color = color)
     }
 }
