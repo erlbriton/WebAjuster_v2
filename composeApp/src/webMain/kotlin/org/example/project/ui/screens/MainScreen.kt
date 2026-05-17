@@ -91,7 +91,7 @@ fun MainScreen() {
                 modifier = Modifier
                     .width(4.dp)
                     .fillMaxHeight()
-                    .background(Color.LightGray)
+                    .background(Color.Black)
                     .pointerInput(screenWidth) {
                         detectDragGestures { change, dragAmount ->
                             change.consume()
@@ -128,7 +128,7 @@ fun MainScreen() {
                         modifier = Modifier
                             .width(4.dp)
                             .fillMaxHeight()
-                            .background(Color.LightGray)
+                            .background(Color.Black)
                             .pointerInput(Unit) {
                                 detectDragGestures { change, dragAmount ->
                                     change.consume()
