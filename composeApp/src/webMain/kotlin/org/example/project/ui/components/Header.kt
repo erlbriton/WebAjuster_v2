@@ -33,8 +33,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
-//import org.example.project.actions.HeaderActions
-//import org.example.project.logic.HeaderActionsButtons
 import org.example.project.logic.HeaderActionsInterface
 import org.example.project.logic.readDeviceIdentification
 import org.example.project.ui.TableConfig
@@ -43,8 +41,6 @@ import org.example.project.utils.UniversalMenuItem
 import org.example.project.utils.UniversalSelector
 import org.example.project.utils.iconsMenu
 import org.example.project.viewmodels.LocalMainViewModel
-
-
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,17 +72,13 @@ fun HeaderTable(
     val helpItems = listOf("Ajuster Help", "About")
 
     // Состояния для селектора памяти
-    var selectorExpanded by remember { mutableStateOf(false) }
     var selectedMemory by remember { mutableStateOf("Flash") }
     val memoryOptions = listOf("Flash", "CD", "RAM")
 
     //Состояние для выбора папки/файла
     var selectFile by remember { mutableStateOf(false) }
-    val selectOptions = listOf("Файл", "Папка")
 
-    val vm = LocalMainViewModel.current // Получаем доступ к "мозгам"
     val scope = rememberCoroutineScope()
-
 
     Column(modifier = Modifier.fillMaxWidth()) {
         HorizontalDivider(modifier = Modifier.fillMaxWidth(), thickness = thickness, color = color)
@@ -119,7 +111,6 @@ fun HeaderTable(
                             modifier = Modifier
                                 .fillMaxHeight()
                                 .clickable {
-                                    /* ЗДЕСЬ ДЕЙСТВИЕ ПО УМОЛЧАНИЮ (например, первый пункт меню) */
                                     println("Выполнено: ${menuItems[0]}")
                                 }
                                 .padding(horizontal = 4.dp),
@@ -140,7 +131,7 @@ fun HeaderTable(
                         Box(
                             modifier = Modifier
                                 .fillMaxHeight()
-                                .clickable { expanded = true } // Только эта часть открывает меню
+                                .clickable { expanded = true }
                                 .padding(horizontal = 2.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -151,15 +142,12 @@ fun HeaderTable(
                             )
                         }
                     }
-                    // Меню (появляется под всей кнопкой)
                     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                         menuItems.forEachIndexed { index, label ->
                             iconsMenu(
                                 label = label,
                                 itemHeight = 24.dp,
-                                // Передаем иконку только для первого пункта
                                 icon = if (index == 0) Icons.Default.Build else null,
-                                // Просто передаем цвет (без двоеточий и типов)
                                 iconColor = Color(0xFFC7092F),
                                 onClick = {
                                     expanded = false
@@ -175,10 +163,10 @@ fun HeaderTable(
                 icon = Icons.Default.Search,
                 tooltipText = "Поиск устройств в сети Modbus",
                 onClick = {
-                    actions.onSearch() // Используем ваш существующий метод
+                    actions.onSearch()
                 }
             )
-            //----------------------------------Отчеты  Exel----------------------------------------
+            //----------------------------------Отчеты Exel----------------------------------------
             TableIconButton(
                 icon = Icons.AutoMirrored.Filled.ListAlt, tooltipText = "Генератор отчетов в Exel",
                 onClick = { actions.onExel() }
@@ -199,12 +187,10 @@ fun HeaderTable(
                             .height(24.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // ЛЕВАЯ ЧАСТЬ: Основное действие (например, открыть первый пункт списка)
                         Box(
                             modifier = Modifier
                                 .fillMaxHeight()
                                 .clickable {
-                                    /* ЗДЕСЬ ДЕЙСТВИЕ ПО УМОЛЧАНИЮ */
                                     println("Выполнено: ${oscilligraphItems[0]}")
                                 }
                                 .padding(horizontal = 4.dp),
@@ -217,15 +203,12 @@ fun HeaderTable(
                                 tint = Color.Red
                             )
                         }
-                        // РАЗДЕЛИТЕЛЬ
                         Spacer(
                             modifier = Modifier
                                 .fillMaxHeight()
                                 .width(1.dp)
                                 .background(Color.Blue)
                         )
-
-                        // ПРАВАЯ ЧАСТЬ: Открытие меню со списком опций
                         Box(
                             modifier = Modifier
                                 .fillMaxHeight()
@@ -240,12 +223,9 @@ fun HeaderTable(
                             )
                         }
                     }
-                    // Выпадающее меню под всей кнопкой
                     DropdownMenu(
                         expanded = clue,
                         onDismissRequest = { clue = false },
-                        // Устанавливаем минимальную ширину, которой хватит для "Осциллографа",
-                        // и позволяем расти до максимума
                         modifier = Modifier.widthIn(min = 300.dp, max = 600.dp)
                     ) {
                         oscilligraphItems.forEach { label ->
@@ -254,7 +234,6 @@ fun HeaderTable(
                                 itemHeight = 16.dp,
                                 onClick = {
                                     clue = false
-                                    // Логика выбора конкретной опции
                                 }
                             )
                         }
@@ -294,7 +273,7 @@ fun HeaderTable(
                         helpItems.forEach { label ->
                             UniversalMenuItem(
                                 label = label,
-                                itemHeight = 16.dp, // Задаем высоту здесь
+                                itemHeight = 16.dp,
                                 onClick = { clueHelp = false }
                             )
                         }
@@ -306,7 +285,7 @@ fun HeaderTable(
                 icon = Icons.Default.Save,
                 tooltipText = "Файловые операции",
                 onClick = {
-                    actions.onFileOration() // Используем ваш существующий метод
+                    actions.onFileOration()
                 }
             )
             // 8. Черный ящик
@@ -314,19 +293,20 @@ fun HeaderTable(
                 icon = Icons.Default.ViewInAr,
                 tooltipText = "Черный ящик",
                 onClick = {
-                    actions.onBlackBox() // Используем существующий метод
+                    actions.onBlackBox()
                 }
             )
             // -------------------------------------Выбор области памяти CPU------------------------
             UniversalSelector(
-                label = "", // Или другое короткое название, если нужно
+                label = "",
                 selectedOption = selectedMemory,
                 options = memoryOptions,
                 tooltipText = "Выбор области памяти",
-                minWidth = 45.dp, // Немного больше, если названия регионов длинные
+                minWidth = 45.dp,
                 onOptionSelected = { selectedMemory = it }
             )
             // ----------------------------Выбор папки/файла-----------------------------------------
+
             TooltipBox(
                 positionProvider = TooltipDefaults.rememberTooltipPositionProvider(
                     TooltipAnchorPosition.Above
@@ -345,12 +325,12 @@ fun HeaderTable(
                         // ЛЕВАЯ ЧАСТЬ: Иконка папки
                         Box(
                             modifier = Modifier
+                                .width(32.dp)
                                 .fillMaxHeight()
                                 .clickable {
-                                    println("DEBUG: Клик по папке сработал!")
+                                    println("DEBUG: Клик по основной папке сработал!")
                                     actions.onPickFileRequest()
-                                }
-                                .padding(horizontal = 4.dp),
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -369,12 +349,12 @@ fun HeaderTable(
                                 .background(Color.Blue)
                         )
 
-                        // ПРАВАЯ ЧАСТЬ: Стрелочка
+                        // ПРАВАЯ ЧАСТЬ: Стрелочка (Просто открывает меню)
                         Box(
                             modifier = Modifier
+                                .width(24.dp)
                                 .fillMaxHeight()
-                                .clickable { selectFile = true }
-                                .padding(horizontal = 2.dp),
+                                .clickable { selectFile = true },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -391,7 +371,10 @@ fun HeaderTable(
                             label = "Файл",
                             itemHeight = 16.dp,
                             onClick = {
+                                println("DEBUG: Клик по пункту Файл сработал!")
                                 selectFile = false
+                                // Запускаем через встроенный в браузер планировщик,
+                                // чтобы окно открылось СРАЗУ ПОСЛЕ закрытия меню в том же потоке жестов
                                 actions.onPickFileRequest()
                             }
                         )
@@ -399,6 +382,7 @@ fun HeaderTable(
                             label = "Папка",
                             itemHeight = 16.dp,
                             onClick = {
+                                println("DEBUG: Клик по пункту Папка сработал!")
                                 selectFile = false
                                 actions.onPickDirectoryRequest()
                             }
@@ -406,17 +390,17 @@ fun HeaderTable(
                     }
                 }
             }
-            Spacer(modifier = Modifier.width(20.dp))//Отступ
+            Spacer(modifier = Modifier.width(5.dp))
             //----------------------Кнопка "Подключиться"-------------------------------------------
             TableIconButton(
                 text = "ПОДКЛЮЧИТЬСЯ",
-                tooltipText = "Получить  ID устройства, найти его в базе и загрузить уставки",
+                tooltipText = "Получить ID устройства, найти его в базе и загрузить уставки",
                 backgroundColor = Color(0xFFC2B7B7),
                 onClick = {
                     actions.onFileOration()
                 }
             )
-            Spacer(modifier = Modifier.width(20.dp))//Отступ
+            Spacer(modifier = Modifier.width(5.dp))
             //----------------------Кнопка "ID"-----------------------------------------------------
             TableIconButton(
                 text = "ID",
@@ -424,17 +408,17 @@ fun HeaderTable(
                 backgroundColor = Color(0xFFC2B7B7),
                 onClick = {
                     scope.launch {
-                        // Вызываем стандартный метод контракта,
-                        // а Compose сам подставит под него наш JS-код из файла выше!
-                        readDeviceIdentification() // Или замените на actions.onIdRequest(), если добавили метод в интерфейс
+                        readDeviceIdentification()
                     }
                 }
             )
-            HorizontalDivider(
-                modifier = Modifier.fillMaxWidth(),
-                thickness = thickness,
-                color = color
-            )
-        }
+        } // Конец Row
+
+        // Нижняя сплошная линия-разделитель панели инструментов
+        HorizontalDivider(
+            modifier = Modifier.fillMaxWidth(),
+            thickness = thickness,
+            color = color
+        )
     }
 }
