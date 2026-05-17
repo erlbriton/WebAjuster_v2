@@ -64,7 +64,7 @@ fun LineTwoTable(
                         onOptionSelected = { selectedProtocol = it }
                     )
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
 
                     UniversalSelector(
                         label = "COM",
@@ -75,7 +75,7 @@ fun LineTwoTable(
                         onOptionSelected = { selectedCom = it }
                     )
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
 
                     UniversalSelector(
                         label = "BPS",
@@ -86,7 +86,7 @@ fun LineTwoTable(
                         onOptionSelected = { chosenSpeed = it }
                     )
 
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
 
                     ManualAndAutoInputField(
                         label = "FrameEnd",

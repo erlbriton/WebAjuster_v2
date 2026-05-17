@@ -98,7 +98,7 @@ fun MainScreen() {
                             if (screenWidth > 0) {
                                 // Пересчитываем weight в зависимости от движения мыши
                                 val deltaWeight = dragAmount.x / screenWidth
-                                leftWeight = (leftWeight + deltaWeight).coerceIn(0.1f, 0.9f)
+                                leftWeight = (leftWeight + deltaWeight).coerceIn(0.1f, 0.6f)
                             }
                         }
                     }
