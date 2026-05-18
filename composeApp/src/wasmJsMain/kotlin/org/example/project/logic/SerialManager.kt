@@ -1,5 +1,10 @@
 package org.example.project.logic
 
+// === ШАГ 1: ДОБАВЛЯЕМ ФУНКЦИЮ ОКНА НА ВЕРХНИЙ УРОВЕНЬ ===
+//fun showHardwareAlert(msg: String) {
+//    js("alert(msg)")
+//}
+
 // Вспомогательное расширение для красивого логирования HEX в стиле Kotlin
 private fun ByteArray.toHexString() =
     joinToString(" ") { it.toInt().and(0xFF).toString(16).padStart(2, '0').uppercase() }
@@ -33,7 +38,14 @@ actual suspend fun readDeviceIdentification() {
                 asciiResult.append(".")
             }
         }
-        println("📝 Расшифровка паспорта ASCII: $asciiResult")
+
+        val resultText = asciiResult.toString()
+        println("📝 Расшифровка паспорта ASCII: $resultText")
+
+        // === ШАГ 2: ВЫЗЫВАЕМ НАШЕ ОКНО БРАУЗЕРА С ПАСПОРТОМ ===
+       // showHardwareAlert(resultText)
+        org.example.project.viewmodels.MainViewModel.instance.openHardwareDialog(resultText)
+
     } else {
         println("❌ Ошибка: Буфер пуст или превышен таймаут ответа.")
     }

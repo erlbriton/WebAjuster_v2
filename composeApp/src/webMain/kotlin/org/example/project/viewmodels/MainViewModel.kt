@@ -30,22 +30,24 @@ class MainViewModel {
     // ID выбранного устройства для подсветки
     var selectedDeviceId by androidx.compose.runtime.mutableStateOf("")
 
-    // Объект текущего выбранного устройства для передачи в шапки/линии таблиц
-   // var currentDevice by androidx.compose.runtime.mutableStateOf<org.example.project.models.DeviceInfoIni?>(null)
+    // 1. Состояние для красивого окна
+    var showHardwareDialog by mutableStateOf(false)
+    var hardwareDialogText by mutableStateOf("")
 
-//    fun selectDevice(device: org.example.project.models.DeviceInfoIni) {
-//        selectedDeviceId = device.id
-//        currentDeviceState.value = device
-//
-//        // СИНХРОНИЗАЦИЯ: Копируем данные из файла в переменные экрана
-//        installationLocation = device.location
-//        // Если в DeviceInfoIni есть дата и тип, их можно скопировать так же:
-//        // dateSet = device.date
-//        // typeMechanism = device.type
-//
-//        parameters.clear()
-//        parameters.addAll(device.flashParameters)
-//    }
+    fun openHardwareDialog(text: String) {
+        hardwareDialogText = text
+        showHardwareDialog = true
+    }
+
+    // 2. Глобальная ссылка, чтобы вызвать окно из любого места
+    companion object {
+        lateinit var instance: MainViewModel
+    }
+
+    init {
+        instance = this // Сохраняем ссылку на текущий экземпляр
+        loadSampleData()
+    }
 
     fun selectDevice(device: org.example.project.models.DeviceInfoIni) {
         selectedDeviceId = device.id

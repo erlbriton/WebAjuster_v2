@@ -11,6 +11,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -104,5 +107,28 @@ fun DeviceSidebar(modifier: Modifier = Modifier) {
                 }
             }
         }
+    }
+        // val vm = LocalMainViewModel.current
+
+    if (vm.showHardwareDialog) {
+        AlertDialog(
+            onDismissRequest = { vm.showHardwareDialog = false },
+            title = {
+                Text(text = "Паспорт устройства", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            },
+            text = {
+                Text(text = vm.hardwareDialogText, fontSize = 14.sp)
+            },
+            confirmButton = {
+                Button(
+                    onClick = { vm.showHardwareDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFA6E594))
+                ) {
+                    Text("ОК", color = Color.Black)
+                }
+            },
+            shape = RoundedCornerShape(12.dp),
+            containerColor = Color.White
+        )
     }
 }
