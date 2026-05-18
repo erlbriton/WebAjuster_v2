@@ -80,6 +80,8 @@ fun HeaderTable(
 
     val scope = rememberCoroutineScope()
 
+    val vm = LocalMainViewModel.current
+
     Column(modifier = Modifier.fillMaxWidth()) {
         HorizontalDivider(modifier = Modifier.fillMaxWidth(), thickness = thickness, color = color)
 
@@ -299,11 +301,14 @@ fun HeaderTable(
             // -------------------------------------Выбор области памяти CPU------------------------
             UniversalSelector(
                 label = "",
-                selectedOption = selectedMemory,
+                selectedOption = vm.selectedMemoryArea, // Читаем текущее состояние из VM
                 options = memoryOptions,
                 tooltipText = "Выбор области памяти",
                 minWidth = 45.dp,
-                onOptionSelected = { selectedMemory = it }
+                onOptionSelected = { chosenArea ->
+                    // Передаем выбранную область (Flash, CD, RAM) во ViewModel
+                    vm.changeMemoryArea(chosenArea)
+                }
             )
             // ----------------------------Выбор папки/файла-----------------------------------------
 

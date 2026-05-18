@@ -71,6 +71,7 @@ fun LineFifthTable(
                 tooltipText = "Обновить параметры из контроллера",
                 backgroundColor = Color.LightGray,
                 onClick = {
+                    vm.refreshControllerData()
                     println("DEBUG: Запрос данных из контроллера...")
                 }
             )
