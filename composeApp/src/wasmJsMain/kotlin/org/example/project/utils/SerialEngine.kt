@@ -6,7 +6,12 @@ import org.khronos.webgl.Uint8Array
 import org.khronos.webgl.get
 import org.khronos.webgl.set
 
-// Выносим функцию на самый верхний уровень (Top-level) — теперь компилятор будет счастлив
+// Интерфейс для безопасного обмена данными между JS и Kotlin/Wasm БЕЗ использования dynamic
+external interface SerialResponse : JsAny {
+    val buffer: Uint8Array?
+    val portName: String?
+}
+
 @JsFun("""
     async (requestBytes, expectedLen) => {
         let port;
@@ -14,6 +19,32 @@ import org.khronos.webgl.set
         let writer;
         try {
             port = await navigator.serial.requestPort();
+            
+            let detectedComName = "USB-UART"; // Базовое имя, если чип совсем экзотический
+            
+            if (port.getInfo) {
+                const info = port.getInfo();
+                const vid = info.usbVendorId;
+                const pid = info.usbProductId;
+                
+                // === ОПРЕДЕЛЯЕМ ИСКЛЮЧИТЕЛЬНО ИМЯ АДАПТЕРА ПО VID ===
+                if (vid !== undefined) {
+                    if (vid === 0x1A86) {
+                        detectedComName = "CH340"; 
+                    } else if (vid === 0x10C4) {
+                        detectedComName = "CP210x"; // Сюда четко попадает ваш CP2103
+                    } else if (vid === 0x0403) {
+                        detectedComName = "FTDI"; 
+                    } else if (vid === 0x067B) {
+                        detectedComName = "PL2303"; 
+                    } else if (vid === 0x2341) {
+                        detectedComName = "Arduino"; 
+                    }
+                }
+                
+                console.log("[WebSerial] Адаптер успешно определен. VID: 0x" + vid.toString(16) + " -> " + detectedComName);
+            }
+
             await port.open({ 
                 baudRate: 115200, 
                 dataBits: 8, 
@@ -22,7 +53,6 @@ import org.khronos.webgl.set
                 flowControl: "none" 
             });
 
-            // Ваши проверенные тайминги и сигналы управления
             await new Promise(r => setTimeout(r, 500));
             await port.setSignals({ dataTerminalReady: true, requestToSend: true });
             await new Promise(r => setTimeout(r, 200));
@@ -30,13 +60,11 @@ import org.khronos.webgl.set
             writer = port.writable.getWriter();
             reader = port.readable.getReader();
 
-            // Отправляем пакет данных
             await writer.write(requestBytes);
 
             let buf = new Uint8Array(0);
             let isTimeout = false;
 
-            // Предохранитель на 1000 мс
             const timeout = setTimeout(() => {
                 isTimeout = true;
                 if (reader) reader.cancel().catch(() => {});
@@ -61,7 +89,7 @@ import org.khronos.webgl.set
             writer.releaseLock();
             await port.close();
 
-            return buf;
+            return { buffer: buf, portName: detectedComName };
 
         } catch (err) {
             console.error("💥 Ошибка Serial Engine: " + err.message);
@@ -72,24 +100,20 @@ import org.khronos.webgl.set
         }
     }
 """)
-private external fun jsTransceive(request: Uint8Array, expectedLen: Int): kotlin.js.Promise<Uint8Array?>?
+private external fun jsTransceive(request: Uint8Array, expectedLen: Int): kotlin.js.Promise<SerialResponse?>?
 
-// Сам объект движка оставляем чистым, он просто вызывает внешнюю функцию
 object SerialEngine {
 
     /**
      * Основной мост между Kotlin Coroutines и JS Web Serial API
      */
     suspend fun transceive(request: ByteArray, expectedLen: Int): ByteArray? {
-        // Конвертируем Kotlin ByteArray -> JS Uint8Array
         val jsRequest = Uint8Array(request.size)
         for (i in request.indices) { jsRequest[i] = request[i] }
 
-        // Вызываем нашу top-level JS функцию
         val promise = jsTransceive(jsRequest, expectedLen) ?: return null
 
-        // Ожидаем выполнение Promise внутри корутины
-        val jsResponse = kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
+        val jsResult: SerialResponse? = kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
             promise.then { valData ->
                 continuation.resumeWith(Result.success(valData))
                 null
@@ -99,9 +123,23 @@ object SerialEngine {
             }
         }
 
+        if (jsResult == null) return null
+
+        // Передаем чистое имя адаптера во ViewModel для отображения в LineTwoTable
+        try {
+            val portName = jsResult.portName
+            if (portName != null && portName.isNotEmpty()) {
+                org.example.project.viewmodels.MainViewModel.instance.setConnectedPort(portName)
+            }
+        } catch (e: Exception) {
+            println("Не удалось записать имя адаптера в UI")
+        }
+
+        // Извлекаем буфер ответа
+        val jsResponse: Uint8Array? = jsResult.buffer
+
         if (jsResponse == null || jsResponse.length == 0) return null
 
-        // Конвертируем JS Uint8Array -> Kotlin ByteArray
         val ktResult = ByteArray(jsResponse.length)
         for (i in 0 until jsResponse.length) { ktResult[i] = jsResponse[i] }
         return ktResult

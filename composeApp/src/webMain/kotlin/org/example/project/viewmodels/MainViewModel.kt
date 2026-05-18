@@ -1,5 +1,3 @@
-//MainViewModel.kt
-
 package org.example.project.viewmodels
 
 import androidx.compose.runtime.*
@@ -30,16 +28,34 @@ class MainViewModel {
     // ID выбранного устройства для подсветки
     var selectedDeviceId by androidx.compose.runtime.mutableStateOf("")
 
-    // 1. Состояние для красивого окна
+    // Состояние для красивого окна паспорта
     var showHardwareDialog by mutableStateOf(false)
     var hardwareDialogText by mutableStateOf("")
+
+    // Список доступных портов (изначально пустой!)
+    val availableComPorts = mutableStateListOf<String>()
+
+    // Выбранный в данный момент порт (изначально пустая строка)
+    var selectedComPort by mutableStateOf("")
 
     fun openHardwareDialog(text: String) {
         hardwareDialogText = text
         showHardwareDialog = true
     }
 
-    // 2. Глобальная ссылка, чтобы вызвать окно из любого места
+    // === ФУНКЦИЯ ДЛЯ КОРРЕКТНОЙ ЗАПИСИ ТОЧНОГО НОМЕРА ПОРТА ===
+    fun setConnectedPort(portName: String) {
+        if (portName.isNotEmpty()) {
+            androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
+                if (!availableComPorts.contains(portName)) {
+                    availableComPorts.add(portName)
+                }
+                selectedComPort = portName // Порт мгновенно отображается на экране
+            }
+        }
+    }
+
+    // Глобальная ссылка, чтобы вызвать окно из любого места
     companion object {
         lateinit var instance: MainViewModel
     }
@@ -66,7 +82,6 @@ class MainViewModel {
     /**
      * Обновленная функция загрузки с детектором дубликатов
      * @param info Данные из парсера
-     * @param onDuplicatesFound Коллбэк для вывода сообщения в ваше стандартное окно
      */
     fun updateFromDevice(info: DeviceInfoIni) {
         // Сохраняем общую информацию
@@ -82,7 +97,6 @@ class MainViewModel {
         parameters.clear()
 
         // 2. Наполняем его ТОЛЬКО из списка flashParameters
-        // Если здесь пусто — значит в парсере flashParameters не заполнились
         parameters.addAll(info.flashParameters)
 
         println("DEBUG: Загружено параметров во FLASH: ${parameters.size}")
@@ -112,7 +126,7 @@ class MainViewModel {
             val param = parameters[i]
             val shouldBeSelected = (param.code == code)
 
-            // Перерисовываем только то, что реально изменилось (старую выделенную строку и новую)
+            // Перерисовываем только то, что реально изменилось
             if (param.isSelected != shouldBeSelected) {
                 param.isSelected = shouldBeSelected
 
@@ -136,10 +150,6 @@ class MainViewModel {
         }
     }
 
-    init {
-        loadSampleData()
-    }
-
     fun loadSampleData() {
         parameters.clear()
     }
@@ -147,23 +157,18 @@ class MainViewModel {
     // --- ФУНКЦИИ АВТОПЕРЕСЧЕТА ДАННЫХ ---
 
     fun updateHexBase(param: ParameterData, newHex: String) {
-        // 1. Если пользователь стёр вообще всё (пустая строка), оставляем префикс "x"
         if (newHex.isEmpty()) {
             param.hexBase = "x"
             return
         }
 
-        // 2. Приводим к верхнему регистру для проверки, но префикс сделаем маленькой "x"
         val upperInput = newHex.uppercase()
         val cleanHex = if (upperInput.startsWith("X")) upperInput.removePrefix("X") else upperInput
 
-        // Ограничиваем длину чистых HEX-символов до 4 штук (например: FFFF)
         if (cleanHex.length > 4) return
 
-        // Сохраняем обратно в модель с маленькой "x" на конце
         param.hexBase = "x" + cleanHex
 
-        // 3. Пересчитываем физическое значение, только если введено валидное число
         val rawInt = cleanHex.toIntOrNull(16)
         if (rawInt != null) {
             val scaleValue = currentVarsMap[param.scaleName] ?: 1.0
@@ -178,7 +183,6 @@ class MainViewModel {
         val scaleValue = currentVarsMap[param.scaleName] ?: 1.0
 
         val rawInt = if (scaleValue != 0.0) (physDouble / scaleValue).toInt() else 0
-        // Заменили .lowercase() на .uppercase() для перевода букв в верхний регистр
         param.hexBase = "x" + rawInt.toString(16).uppercase().padStart(4, '0')
     }
 
@@ -209,7 +213,6 @@ class MainViewModel {
         val scaleValue = currentVarsMap[param.scaleName] ?: 1.0
 
         val rawInt = if (scaleValue != 0.0) (physDouble / scaleValue).toInt() else 0
-        // Заменили .lowercase() на .uppercase() для перевода букв в верхний регистр
         param.hexCtrl = "x" + rawInt.toString(16).uppercase().padStart(4, '0')
     }
 }

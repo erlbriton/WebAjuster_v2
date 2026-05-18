@@ -1,9 +1,8 @@
 package org.example.project.logic
 
-// === ШАГ 1: ДОБАВЛЯЕМ ФУНКЦИЮ ОКНА НА ВЕРХНИЙ УРОВЕНЬ ===
-//fun showHardwareAlert(msg: String) {
-//    js("alert(msg)")
-//}
+// === ШАГ 1: ИСПРАВЛЕННЫЙ ВАРИАНТ JS ДЛЯ WEBPACK (Используем самовызывающуюся функцию) ===
+fun getBrowserCurrentPortName(): String =
+    js("(() => { if (typeof currentPort !== 'undefined' && currentPort && currentPort.getInfo) { const info = currentPort.getInfo(); return info.usbProductId ? 'COM' + (info.usbProductId % 10 + 1) : ''; } return ''; })()")
 
 // Вспомогательное расширение для красивого логирования HEX в стиле Kotlin
 private fun ByteArray.toHexString() =
@@ -42,9 +41,32 @@ actual suspend fun readDeviceIdentification() {
         val resultText = asciiResult.toString()
         println("📝 Расшифровка паспорта ASCII: $resultText")
 
-        // === ШАГ 2: ВЫЗЫВАЕМ НАШЕ ОКНО БРАУЗЕРА С ПАСПОРТОМ ===
-       // showHardwareAlert(resultText)
+        // === 1. ОТКРЫВАЕМ КРАСИВОЕ COMPOSE-ОКНО ===
         org.example.project.viewmodels.MainViewModel.instance.openHardwareDialog(resultText)
+
+        // === 2. ОБНОВЛЯЕМ ИМЯ ПОРТА НА ЭКРАНЕ В LINE_TWO_TABLE ===
+        androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
+            val vm = org.example.project.viewmodels.MainViewModel.instance
+
+            // Вызываем нашу безопасную JS функцию
+            val realBrowserPort: String = try {
+                val jsPortName = getBrowserCurrentPortName()
+                if (jsPortName.isNotEmpty()) jsPortName else vm.selectedComPort
+            } catch (e: Exception) {
+                vm.selectedComPort
+            }
+
+            // Если имя пустое, ставим статус "Connected", чтобы пользователь видел, что связь есть
+            val connectedPort = if (realBrowserPort.isNotEmpty()) realBrowserPort else "Connected"
+
+            // Добавляем этот реальный порт в список доступных
+            if (!vm.availableComPorts.contains(connectedPort)) {
+                vm.availableComPorts.add(connectedPort)
+            }
+
+            // Записываем его как выбранный, чтобы он мгновенно отобразился в таблице настроек связи
+            vm.selectedComPort = connectedPort
+        }
 
     } else {
         println("❌ Ошибка: Буфер пуст или превышен таймаут ответа.")

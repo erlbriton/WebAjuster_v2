@@ -194,7 +194,7 @@ private fun HeaderSection(
                     ) {
                         Text(
                             title,
-                            fontSize   = 10.sp,
+                            fontSize   = 12.sp,
                             fontWeight = FontWeight.Bold,
                             textAlign  = TextAlign.Center,
                             maxLines   = 1,
@@ -280,7 +280,7 @@ private fun RowScope.ReadOnlyCell(
     ) {
         Text(
             text,
-            fontSize   = 10.sp,
+            fontSize   = 12.sp,
             maxLines   = 1,
             overflow   = TextOverflow.Ellipsis,
             textAlign  = align, // Центрирует текст внутри границ Text
@@ -310,7 +310,7 @@ private fun RowScope.EditableCell(
             onValueChange = onValueChange,
             singleLine    = true,
             textStyle     = TextStyle(
-                fontSize  = 10.sp,
+                fontSize  = 12.sp,
                 color     = textColor,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center // Текст внутри поля ввода по центру
