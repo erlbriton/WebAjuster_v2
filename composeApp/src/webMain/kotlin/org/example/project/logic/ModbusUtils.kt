@@ -1,17 +1,14 @@
 package org.example.project.logic
 
-object ModbusUtils {
-    /**
-     * Вычисляет CRC16 Modbus и возвращает массив из 2 байт:
-     * [0] - Младший байт (Low Byte) -> передается первым
-     * [1] - Старший байт (High Byte) -> передается вторым
-     */
+/**
+ * Специальный конвертер для webMain (ViewModel),
+ * изолированный от конфликтов имен с другими платформами.
+ */
+object WebModbusConverter {
+
     fun calculateCRC16(data: ByteArray): ByteArray {
         var crc = 0xFFFF
         val size = data.size
-
-        // Заменили "for (b in data)" на цикл по индексам.
-        // Это обходит баг мультиплатформенного плагина IDE!
         for (i in 0 until size) {
             val b = data[i]
             crc = crc xor (b.toInt() and 0xFF)
@@ -24,8 +21,8 @@ object ModbusUtils {
             }
         }
         return byteArrayOf(
-            (crc and 0xFF).toByte(),        // Младший байт (Low)
-            ((crc ushr 8) and 0xFF).toByte() // Старший байт (High)
+            (crc and 0xFF).toByte(),
+            ((crc ushr 8) and 0xFF).toByte()
         )
     }
 
@@ -33,17 +30,13 @@ object ModbusUtils {
      * Добавляет CRC16 к массиву байт
      */
     fun appendCRC(packet: ByteArray): ByteArray {
-        // Чтобы избежать скрытых вызовов платформенных методов склеивания массивов,
-        // которые тоже могут подсвечиваться, собираем массив вручную и явно:
         val crcBytes = calculateCRC16(packet)
         val result = ByteArray(packet.size + 2)
-
         for (i in packet.indices) {
             result[i] = packet[i]
         }
         result[packet.size] = crcBytes[0]
         result[packet.size + 1] = crcBytes[1]
-
         return result
     }
 }

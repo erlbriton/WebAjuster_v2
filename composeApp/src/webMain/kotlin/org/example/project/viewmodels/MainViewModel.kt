@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
+import org.example.project.logic.WebModbusConverter
 
 // =================================================================================
 // ЧИСТЫЕ TOP-LEVEL ФУНКЦИИ (Используют глобальный window.wasmSerialTransceive)
@@ -286,24 +287,24 @@ class MainViewModel {
         val device = currentDeviceState.value
         if (device == null) return
 
-        fun appendModbusCRC(bytes: ByteArray): ByteArray {
-            var crc = 0xFFFF
-            for (byte in bytes) {
-                crc = crc xor (byte.toInt() and 0xFF)
-                for (j in 0 until 8) {
-                    if ((crc and 1) != 0) {
-                        crc = (crc ushr 1) xor 0xA001
-                    } else {
-                        crc = crc ushr 1
-                    }
-                }
-            }
-            val result = ByteArray(bytes.size + 2)
-            bytes.copyInto(result)
-            result[bytes.size] = (crc and 0xFF).toByte()
-            result[bytes.size + 1] = ((crc ushr 8) and 0xFF).toByte()
-            return result
-        }
+//        fun appendModbusCRC(bytes: ByteArray): ByteArray {
+//            var crc = 0xFFFF
+//            for (byte in bytes)  {
+//                crc = crc xor (byte.toInt() and 0xFF)
+//                for (j in 0 until 8) {
+//                    if ((crc and 1) != 0) {
+//                        crc = (crc ushr 1) xor 0xA001
+//                    } else {
+//                        crc = crc ushr 1
+//                    }
+//                }
+//            }
+//            val result = ByteArray(bytes.size + 2)
+//            bytes.copyInto(result)
+//            result[bytes.size] = (crc and 0xFF).toByte()
+//            result[bytes.size + 1] = ((crc ushr 8) and 0xFF).toByte()
+//            return result
+//        }
 
         viewModelScope.launch {
             println("DEBUG: === ЗАПУСК ФИЗИЧЕСКОГО ОПРОСА КОНТРОЛЛЕРА ПО МОДБАС (0x03) ===")
@@ -351,7 +352,8 @@ class MainViewModel {
                     (regCount and 0xFF).toByte()
                 )
 
-                val fullPacket = appendModbusCRC(rawPacket)
+              //  val fullPacket = appendModbusCRC(rawPacket)
+                val fullPacket = WebModbusConverter.appendCRC(rawPacket)
                 val expectedSize = 5 + (regCount * 2)
 
                 println("--> Отправка 0x03 (Адрес: $startAddress, Кол-во: $regCount), Ожидаем байт: $expectedSize")

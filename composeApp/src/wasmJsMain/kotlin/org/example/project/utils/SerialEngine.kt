@@ -7,11 +7,12 @@ import org.khronos.webgl.get
 import org.khronos.webgl.set
 
 // =================================================================================
-// НАДЕЖНЫЙ JS-МОСТ С ЗАЩИТОЙ ОТ ЗАВИСАНИЯ ПОРТОВ
+// СВЕРХНАДЕЖНЫЙ JS-МОСТ С ЗАЩИТОЙ ОТ ЗАВИСАНИЙ И УВЕЛИЧЕННЫМИ ПАУЗАМИ ДЛЯ CP210x
 // =================================================================================
 
 @JsFun("""
     () => {
+        // Главная функция трансивера
         window.wasmSerialTransceive = async (requestBytes, expectedLen) => {
             if (window.serialIdleTimeout) {
                 clearTimeout(window.serialIdleTimeout);
@@ -21,23 +22,19 @@ import org.khronos.webgl.set
             let port = window.activeWasmSerialPort;
             let reader = null;
             let writer = null;
-            let isNewConnection = false;
 
             try {
-                // 1. Проверяем кэшированный порт
+                // 1. Если кэша нет, ищем в ранее разрешенных
                 if (!port) {
                     const ports = await navigator.serial.getPorts();
                     if (ports.length > 0) {
-                        // Берем первый доступный. 
-                        // ВНИМАНИЕ: Если портов несколько, тут может выбраться не тот!
                         port = ports[0]; 
                         console.log("[WebSerial] Подхватываем ранее разрешенный порт из getPorts()");
                     } else {
-                        console.log("[WebSerial] Нет разрешенных портов. Запрашиваем окно выбора у пользователя...");
+                        console.log("[WebSerial] Список getPorts() пуст. Запрашиваем окно у пользователя...");
                         port = await navigator.serial.requestPort(); 
                     }
                     window.activeWasmSerialPort = port;
-                    isNewConnection = true;
                 }
 
                 // 2. Попытка открытия порта
@@ -51,26 +48,23 @@ import org.khronos.webgl.set
                         flowControl: "none" 
                     });
 
-                    await new Promise(r => setTimeout(r, 500));
+                    // Даем CP210x чуть больше времени прийти в себя после открытия порта
+                    await new Promise(r => setTimeout(r, 400));
                     await port.setSignals({ dataTerminalReady: true, requestToSend: true });
                     await new Promise(r => setTimeout(r, 200));
-                    isNewConnection = true;
                 }
 
-                if (isNewConnection && port.getInfo) {
-                    let detectedComName = "USB-UART";
+                if (port.getInfo && !window.lastDetectedPortName) {
+                    let detectedComName = "USB-Device";
                     const info = port.getInfo();
-                    const vid = info.usbVendorId;
-                    if (vid === 0x1A86) detectedComName = "CH340"; 
-                    else if (vid === 0x10C4) detectedComName = "CP210x";
-                    else if (vid === 0x0403) detectedComName = "FTDI"; 
-                    else if (vid === 0x067B) detectedComName = "PL2303"; 
-                    
+                    if (info.usbVendorId === 0x1A86) detectedComName = "CH340"; 
+                    else if (info.usbVendorId === 0x10C4) detectedComName = "CP210x";
+                    else if (info.usbVendorId === 0x0403) detectedComName = "FTDI"; 
                     window.lastDetectedPortName = detectedComName;
                     console.log("[WebSerial] 👍 Порт успешно открыт! Адаптер: " + detectedComName);
                 }
 
-                // 3. Работа с потоками данных
+                // 3. Обмен данными
                 writer = port.writable.getWriter();
                 reader = port.readable.getReader();
 
@@ -79,10 +73,11 @@ import org.khronos.webgl.set
                 let buf = new Uint8Array(0);
                 let isTimeout = false;
 
+                // Увеличиваем таймаут ожидания ответа до 1500мс для надежности первой инициализации
                 const timeout = setTimeout(() => {
                     isTimeout = true;
                     if (reader) reader.cancel().catch(() => {});
-                }, 1000);
+                }, 1500);
 
                 try {
                     while (!isTimeout) {
@@ -100,34 +95,60 @@ import org.khronos.webgl.set
                     clearTimeout(timeout);
                 }
 
-                reader.releaseLock(); reader = null;
-                writer.releaseLock(); writer = null;
+                if (reader) { reader.releaseLock(); reader = null; }
+                if (writer) { writer.releaseLock(); writer = null; }
 
-                // 4. Таймер удержания сессии (Keep-Alive)
+                // Keep-Alive таймер бездействия (5 секунд)
                 window.serialIdleTimeout = setTimeout(async () => {
                     if (window.activeWasmSerialPort && window.activeWasmSerialPort.readable) {
-                        console.log("[WebSerial] Сессия закрыта по таймауту бездействия (3 сек).");
+                        console.log("[WebSerial] Закрытие порта по таймауту бездействия.");
                         const p = window.activeWasmSerialPort;
                         window.activeWasmSerialPort = null;
+                        window.lastDetectedPortName = "";
                         try { await p.close(); } catch(e) {}
                     }
-                }, 3000);
+                }, 5000);
 
                 return buf;
 
             } catch (err) {
-                // КРИТИЧЕСКАЯ ИСПРАВЛЕННАЯ ЧАСТЬ: Если порт занят ОС, 
-                // мы ОПАСЛИВО СБРАСЫВАЕМ ВСЕ КЭШИ, чтобы дать приложению шанс на восстановление.
                 console.error("💥 КРИТИЧЕСКАЯ ОШИБКА WebSerial API: " + err.message);
                 
                 if (reader) try { reader.releaseLock(); } catch(e) {}
                 if (writer) try { writer.releaseLock(); } catch(e) {}
                 
-                // Полностью уничтожаем ссылки на этот проблемный девайс в текущей сессии
-                window.activeWasmSerialPort = null;
+                // Вызываем forget() ТОЛЬКО если порт реально "умер" или отключен физически
+                if (port && (err.message.includes("holding") || err.message.includes("device lost"))) {
+                    console.warn("[WebSerial] Вызываем port.forget() для очистки дефектного разрешения...");
+                    try { await port.forget(); } catch(e) {}
+                    window.activeWasmSerialPort = null;
+                }
+
                 window.lastDetectedPortName = "";
-                
                 return null;
+            }
+        };
+
+        // Функция ручного сброса и принудительного вызова диалога
+        window.wasmForceChooseNewPort = async () => {
+            console.log("[WebSerial] Принудительный сброс. Открываем окно выбора порта...");
+            if (window.serialIdleTimeout) clearTimeout(window.serialIdleTimeout);
+            
+            if (window.activeWasmSerialPort) {
+                try { await window.activeWasmSerialPort.close(); } catch(e) {}
+            }
+            
+            window.activeWasmSerialPort = null;
+            window.lastDetectedPortName = "";
+
+            try {
+                const newPort = await navigator.serial.requestPort();
+                window.activeWasmSerialPort = newPort;
+                console.log("[WebSerial] Пользователь выбрал новый порт:", newPort);
+                return true;
+            } catch (e) {
+                console.log("[WebSerial] Выбор порта отменен пользователем.");
+                return false;
             }
         };
     }
@@ -137,21 +158,31 @@ external fun initWebSerialBridge()
 @JsFun("() => window.lastDetectedPortName || ''")
 external fun getLastDetectedPortName(): String
 
-// Экспортируем функцию сброса для вызова из Kotlin (например, при кликах или ошибках)
-@JsFun("() => { window.activeWasmSerialPort = null; window.lastDetectedPortName = ''; if(window.serialIdleTimeout) clearTimeout(window.serialIdleTimeout); console.log('[WebSerial] Кэш портов принудительно очищен.'); }")
+@JsFun("() => { window.activeWasmSerialPort = null; window.lastDetectedPortName = ''; console.log('[WebSerial] Кэш очищен.'); }")
 external fun resetSerialConnection()
+
+@JsFun("() => window.wasmForceChooseNewPort ? window.wasmForceChooseNewPort() : Promise.resolve(false)")
+private external fun jsForceChooseNewPort(): kotlin.js.Promise<JsAny?>?
 
 @JsFun("(request, expectedLen) => { if (window.wasmSerialTransceive) return window.wasmSerialTransceive(request, expectedLen); return Promise.resolve(null); }")
 private external fun jsTransceive(request: Uint8Array, expectedLen: Int): kotlin.js.Promise<Uint8Array?>?
 
 // =================================================================================
-// ОБЪЕКТ ДВИЖКА
+// КOTLIN ИНТЕРФЕЙС ДВИЖКА
 // =================================================================================
 
 object SerialEngine {
 
     init {
         initWebSerialBridge()
+    }
+
+    /**
+     * Вызовите этот метод из Compose UI (например, при клике на кнопку "Сменить COM-порт"),
+     * чтобы гарантированно открыть системное окно выбора устройства.
+     */
+    fun forceRequestNewPort() {
+        jsForceChooseNewPort()
     }
 
     suspend fun transceive(request: ByteArray, expectedLen: Int): ByteArray? {
@@ -164,15 +195,13 @@ object SerialEngine {
             promise.then { valData ->
                 continuation.resumeWith(Result.success(valData))
                 null
-            }.catch { err ->
-                continuation.resumeWith(Result.failure(Exception("JS Promise Rejected")))
+            }.catch {
+                continuation.resumeWith(Result.success(null))
                 null
             }
         }
 
         if (jsResponse == null || jsResponse.length == 0) {
-            // Если буфер пуст, на всякий случай сбрасываем кэш, возможно устройство отвалилось физически
-            resetSerialConnection()
             return null
         }
 
@@ -181,9 +210,7 @@ object SerialEngine {
             if (portName.isNotEmpty()) {
                 org.example.project.viewmodels.MainViewModel.instance.setConnectedPort(portName)
             }
-        } catch (e: Exception) {
-            println("Не удалось записать имя адаптера в UI")
-        }
+        } catch (e: Exception) { }
 
         val ktResult = ByteArray(jsResponse.length)
         for (i in 0 until jsResponse.length) { ktResult[i] = jsResponse[i] }
