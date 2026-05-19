@@ -145,4 +145,58 @@ object ModbusRepository {
         }
         println("DEBUG: === СЕТЕВОЙ ОПРОС ЗАВЕРШЕН ===")
     }
+
+    suspend fun writeSingleParameter(param: ParameterData): Boolean {
+        val regAddress = parseModbusRegister(param.modbusReg) ?: return false
+
+        // Убираем префикс 'x', оставляя чистый HEX значения контроллера (например, "x00FA" -> "00FA")
+        val cleanHex = param.hexCtrl.removePrefix("x").removePrefix("X")
+        if (cleanHex.isEmpty() || cleanHex == "x") return false
+        val valueHex = cleanHex.padStart(4, '0') // Гарантируем 2 байта значения
+
+        val addressHex = regAddress.toString(16).padStart(4, '0') // Адрес регистра
+        val registersCountHex = "0001" // Пишем 1 регистр
+        val bytesCountHex = "02"       // Количество байт данных
+
+        // Сборка кадра 0x10: [Адрес устройства (01)] + [Функция (10)] + [Адрес рег] + [Кол-во рег] + [Кол-во байт] + [Данные]
+        val rawPacketHex = "0110" + addressHex + registersCountHex + bytesCountHex + valueHex
+        val hexPacketString = WebModbusConverter.appendCRCToHex(rawPacketHex)
+
+        // Ответ на команду 0x10 от Modbus-устройства всегда равен 8 байтам
+        val expectedSize = 8
+
+        println("--> Отправка 0x10 (Запись регистра $regAddress, Значение: $valueHex)")
+
+        return try {
+            val jsPromise = executeRealTransceiveJsAsync(hexPacketString, expectedSize)
+            var hexResult: String? = null
+
+            if (jsPromise != null) {
+                kotlinx.coroutines.suspendCancellableCoroutine<Unit> { continuation ->
+                    jsPromise.then { jsStr ->
+                        if (jsStr != null) hexResult = jsStr.toString()
+                        continuation.resumeWith(Result.success(Unit))
+                        null
+                    }.catch { err ->
+                        println("❌ Ошибка промиса JS при записи 0x10: ${err.toString()}")
+                        continuation.resumeWith(Result.success(Unit))
+                        null
+                    }
+                }
+            }
+
+            // Если пришел ответ нужной длины и эхо-команда совпадает (начинается с 0110)
+            if (!hexResult.isNullOrEmpty() && hexResult!!.length == (expectedSize * 2)) {
+                println("👍 Параметр ${param.code} успешно записан в контроллер! Ответ: $hexResult")
+                true
+            } else {
+                println("❌ Ошибка записи 0x10: Неверный ответ от устройства.")
+                false
+            }
+        } catch (e: Exception) {
+            println("❌ Исключение при отправке 0x10: ${e.message}")
+            false
+        }
+    }
+
 }

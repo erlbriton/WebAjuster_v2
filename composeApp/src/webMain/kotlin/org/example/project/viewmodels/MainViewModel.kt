@@ -139,6 +139,16 @@ class MainViewModel {
             }
         }
     }
+
+    fun writeParameterToDevice(param: ParameterData) {
+        viewModelScope.launch {
+            val success = ModbusRepository.writeSingleParameter(param)
+            if (!success) {
+                openHardwareDialog("Ошибка записи параметра ${param.code} в контроллер.")
+            }
+        }
+    }
+
 }
 
 val LocalMainViewModel = staticCompositionLocalOf<MainViewModel> {

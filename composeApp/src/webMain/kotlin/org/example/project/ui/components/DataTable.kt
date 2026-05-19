@@ -16,6 +16,10 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -29,6 +33,11 @@ import androidx.compose.ui.zIndex
 import org.example.project.models.ParameterData
 import org.example.project.viewmodels.LocalMainViewModel
 import org.example.project.viewmodels.MainViewModel
+import kotlin.coroutines.ContinuationInterceptor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onKeyEvent
 
 private val ColorBorder     = Color(0xFF000000)
 private val ColorHeaderGroup = Color(0xFFBDBDBD)
@@ -239,10 +248,24 @@ private fun ParameterRow(
         val redColor  = Color(0xFFD32F2F)
         val normColor = Color(0xFF212121)
 
-        EditableCell(weights[4], param.hexBase,  if (hexMismatch)  redColor else normColor) { vm.updateHexBase(param, it) }
-        EditableCell(weights[5], param.physBase, if (physMismatch) redColor else normColor) { vm.updatePhysBase(param, it) }
-        EditableCell(weights[6], param.hexCtrl,  if (hexMismatch)  redColor else normColor) { vm.updateHexCtrl(param, it) }
-        EditableCell(weights[7], param.physCtrl, if (physMismatch) redColor else normColor) { vm.updatePhysCtrl(param, it) }
+        EditableCell(weights[4], param.hexBase,  if (hexMismatch)  redColor else normColor, onValueChange = { vm.updateHexBase(param, it) })
+        EditableCell(weights[5], param.physBase, if (physMismatch) redColor else normColor, onValueChange = { vm.updatePhysBase(param, it) })
+
+// КОНТРОЛЛЕР (добавили отправку по Enter)
+        EditableCell(
+            weight = weights[6],
+            value = param.hexCtrl,
+            textColor = if (hexMismatch) redColor else normColor,
+            onValueChange = { vm.updateHexCtrl(param, it) },
+            onEnterPressed = { vm.writeParameterToDevice(param) }
+        )
+        EditableCell(
+            weight = weights[7],
+            value = param.physCtrl,
+            textColor = if (physMismatch) redColor else normColor,
+            onValueChange = { vm.updatePhysCtrl(param, it) },
+            onEnterPressed = { vm.writeParameterToDevice(param) }
+        )
     }
 }
 
@@ -296,14 +319,15 @@ private fun RowScope.EditableCell(
     weight: Float,
     value: String,
     textColor: Color,
-    onValueChange: (String) -> Unit
+    onValueChange: (String) -> Unit,
+    onEnterPressed: (() -> Unit)? = null // 1. Новый параметр
 ) {
     Box(
         modifier = Modifier
             .weight(weight)
             .fillMaxHeight()
             .padding(horizontal = 2.dp),
-        contentAlignment = Alignment.Center // Центрирует поле ввода внутри ячейки
+        contentAlignment = Alignment.Center
     ) {
         BasicTextField(
             value         = value,
@@ -313,9 +337,27 @@ private fun RowScope.EditableCell(
                 fontSize  = 12.sp,
                 color     = textColor,
                 fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center // Текст внутри поля ввода по центру
+                textAlign = TextAlign.Center
             ),
-            modifier      = Modifier.fillMaxWidth()
+            modifier      = Modifier
+                .fillMaxWidth()
+                // 2. Врезаем перехват клавиши Enter, если передан коллбек
+                .then(
+                    if (onEnterPressed != null) {
+                        Modifier.onKeyEvent { keyEvent ->
+                            // Проверяем, что нажата кнопка Enter ИЛИ NumPadEnter
+                            val isEnter = keyEvent.key == androidx.compose.ui.input.key.Key.Enter ||
+                                    keyEvent.key == androidx.compose.ui.input.key.Key.NumPadEnter
+
+                            if (isEnter && keyEvent.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) {
+                                onEnterPressed()
+                                true // Событие обработано, фокус не улетит
+                            } else {
+                                false
+                            }
+                        }
+                    } else Modifier
+                )
         )
     }
 }
