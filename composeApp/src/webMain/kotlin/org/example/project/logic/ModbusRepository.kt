@@ -5,15 +5,16 @@ import org.example.project.models.DeviceInfoIni
 
 object ModbusRepository {
 
-    fun parseModbusRegister(modbusRegStr: String): Int? {
-        if (!modbusRegStr.contains("r", ignoreCase = true)) return null
-        var clean = modbusRegStr.replace("r", "", ignoreCase = true).trim()
+    fun parseModbusRegister(rawReg: String): Int? {
+        // 1. Принудительно в нижний регистр и убираем "r"
+        var clean = rawReg.lowercase().removePrefix("r").trim()
+        // 2. Отрезаем точку и всё, что после неё (например, "2020.1" -> "2020")
         if (clean.contains(".")) {
             clean = clean.substringBefore(".")
         }
-        return clean.toIntOrNull(16)
+        // 3. Возвращаем чистый Int адреса регистра
+        return clean.toIntOrNull()
     }
-
     fun parseModbusBit(modbusRegStr: String): Int? {
         if (!modbusRegStr.contains(".")) return null
         val bitStr = modbusRegStr.substringAfter(".").trim()

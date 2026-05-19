@@ -149,6 +149,37 @@ class MainViewModel {
         }
     }
 
+    /**
+     * Переносит все значения из БАЗЫ в КОНТРОЛЛЕР
+     * и физически записывает их в устройство по Modbus.
+     */
+    fun writeAllBaseToControllerDevice() {
+        // 1. Сначала копируем локально из базы в контроллер, чтобы обновить UI ячеек
+        copyBaseToController()
+
+        // 2. Запускаем корутину для последовательной отправки всех параметров в железку
+        viewModelScope.launch {
+            var hasError = false
+            var errorCount = 0
+
+            // Фильтруем параметры, отправляем только те, у которых есть валидный регистр Modbus
+            parameters.forEach { param ->
+                val success = ModbusRepository.writeSingleParameter(param)
+                if (!success) {
+                    hasError = true
+                    errorCount++
+                }
+            }
+
+            // Если были ошибки при записи каких-то регистров — сообщаем пользователю
+            if (hasError) {
+                openHardwareDialog("Запись завершена с ошибками. Не удалось записать регистров: $errorCount")
+            } else {
+                openHardwareDialog("Все параметры из БАЗЫ успешно записаны в контроллер!")
+            }
+        }
+    }
+
 }
 
 val LocalMainViewModel = staticCompositionLocalOf<MainViewModel> {

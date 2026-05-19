@@ -154,11 +154,12 @@ private fun HeaderSection(
     vm: MainViewModel,
     onGroupRowHeight: (Float) -> Unit
 ) {
+    // Стейт для отображения окна подтверждения переноса
+    var showConfirmDialog by remember { mutableStateOf(false) }
+
     Column(modifier = Modifier.fillMaxWidth()) {
 
-        // Уровень 1: Группы — замеряем высоту ТОЛЬКО этой строки
-        // Рисуем одну вертикальную линию: между ПАРАМЕТРЫ и БАЗА
-        // (позиция = доля весов первых 4 столбцов от общей суммы)
+        // Уровень 1: Группы
         Row(modifier = Modifier
             .fillMaxWidth()
             .height(28.dp)
@@ -168,10 +169,8 @@ private fun HeaderSection(
                 drawContent()
                 val sw = 1.5.dp.toPx()
                 val total = weights.sum()
-                // X после столбцов №+Имя+Описание+Ед.изм (между ПАРАМЕТРЫ и БАЗА)
                 val x1 = (weights[0] + weights[1] + weights[2] + weights[3]) / total * size.width
                 drawLine(ColorBorder, Offset(x1, 0f), Offset(x1, size.height), sw)
-                // X после hex+Physical БАЗЫ (между БАЗА и КОНТРОЛЛЕР)
                 val x2 = (weights[0] + weights[1] + weights[2] + weights[3] + weights[4] + weights[5]) / total * size.width
                 drawLine(ColorBorder, Offset(x2, 0f), Offset(x2, size.height), sw)
             }
@@ -180,10 +179,19 @@ private fun HeaderSection(
                 GroupCell("ПАРАМЕТРЫ")
                 VerticalResizer { delta -> vm.updateWeights(3, delta, totalWidth) }
             }
-            Box(modifier = Modifier.weight(weights[4] + weights[5]).fillMaxHeight()) {
-                GroupCell("БАЗА")
+
+            // --- СДЕЛАЛИ КЛИКАБЕЛЬНОЙ ГРУППУ "БАЗА" ---
+            Box(
+                modifier = Modifier
+                    .weight(weights[4] + weights[5])
+                    .fillMaxHeight()
+                    .clickable { showConfirmDialog = true } // Открываем диалог по клику
+                    .pointerHoverIcon(PointerIcon.Hand) // Меняем курсор на руку при наведении
+            ) {
+                GroupCell("БАЗА (Записать всё ⚡)")
                 VerticalResizer { delta -> vm.updateWeights(5, delta, totalWidth) }
             }
+
             GroupCell("КОНТРОЛЛЕР", Modifier.weight(weights[6] + weights[7]).fillMaxHeight())
         }
 
@@ -194,7 +202,6 @@ private fun HeaderSection(
                 Box(modifier = Modifier.weight(weights[index]).fillMaxHeight()) {
                     Box(
                         modifier = Modifier.fillMaxSize()
-                            // Нижняя граница заголовка
                             .drawBehind {
                                 val sw = 0.5.dp.toPx()
                                 drawLine(ColorBorder, Offset(0f, size.height), Offset(size.width, size.height), sw)
@@ -216,6 +223,32 @@ private fun HeaderSection(
                 }
             }
         }
+    }
+
+    // --- ОКНО ПОДТВЕРЖДЕНИЯ ДЛЯ ПЕРЕЗАПИСИ ---
+    if (showConfirmDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showConfirmDialog = false },
+            title = { Text(text = "Подтверждение записи", fontWeight = FontWeight.Bold) },
+            text = { Text("Вы уверены, что хотите переписать ВСЕ параметры из БАЗЫ в КОНТРОЛЛЕР по Modbus?") },
+            confirmButton = {
+                androidx.compose.material3.Button(
+                    onClick = {
+                        showConfirmDialog = false
+                        vm.writeAllBaseToControllerDevice() // Запускаем массовую запись
+                    }
+                ) {
+                    Text("Да, записать")
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.OutlinedButton(
+                    onClick = { showConfirmDialog = false }
+                ) {
+                    Text("Отмена")
+                }
+            }
+        )
     }
 }
 

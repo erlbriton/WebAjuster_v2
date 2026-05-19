@@ -161,19 +161,31 @@ private fun parseIniContent(content: String, fileName: String): DeviceInfoIni? {
                         val rawInt = fileHex.removePrefix("x").toIntOrNull(16) ?: 0
                         val hexString = rawInt.toString(16).uppercase()
                         val hexRaw = "x" + hexString.padStart(4, '0')
-                        val scaleName = parts.getOrNull(6)?.trim() ?: ""
-                        val scaleValue = varsMap[scaleName] ?: 1.0
+
+                        // Определяем, дискретный ли это сигнал (TBit)
+                        val dataType = parts.getOrNull(2) ?: ""
+                        val isBitType = dataType.equals("TBit", ignoreCase = true)
+
+                        // ЖЕСТКАЯ ФИЛЬТРАЦИЯ ДЛЯ TBit:
+                        // Для TBit: unit = "*", а modbusReg берем строго из parts[5] (например, r2020.1)
+                        // Для обычных: все по старой схеме (parts[4] - регистр, parts[5] - единица измерения)
+                        val calculatedUnit = if (isBitType) "*" else (parts.getOrNull(5) ?: "")
+                        val calculatedModbusReg = if (isBitType) (parts.getOrNull(5) ?: "") else (parts.getOrNull(4) ?: "")
+
+                        // Шкала (vars): для TBit она не нужна вообще (ставим пустую строку), для остальных — parts[6]
+                        val scaleName = if (isBitType) "" else (parts.getOrNull(6)?.trim() ?: "")
+
+                        val scaleValue = if (isBitType) 1.0 else (varsMap[scaleName] ?: 1.0)
                         val calculated = rawInt * scaleValue
                         val physicalValue = if (calculated % 1.0 == 0.0) calculated.toInt().toString() else calculated.toString()
 
-                        val finalUnit = if (pCode == "4") "29.01.1964" else (parts.getOrNull(5) ?: "")
                         val parameter = ParameterData(
                             code = pCode,
                             idName = parts.getOrNull(0) ?: "",
                             description = parts.getOrNull(1) ?: "",
-                            dataType = parts.getOrNull(2) ?: "",
-                            modbusReg = parts.getOrNull(4) ?: "",
-                            unit = parts.getOrNull(5) ?: "",
+                            dataType = dataType,
+                            modbusReg = calculatedModbusReg, // Сюда улетит "r2020.1" для битовых
+                            unit = calculatedUnit,           // Сюда улетит "*" для битовых
                             scaleName = scaleName,
                             initialHexBase = hexRaw,
                             initialPhysBase = physicalValue,
