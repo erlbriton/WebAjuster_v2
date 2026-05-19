@@ -1,5 +1,7 @@
 package org.example.project.logic
 
+import org.example.project.utils.SerialEngine
+
 // === ШАГ 1: ИСПРАВЛЕННЫЙ ВАРИАНТ JS ДЛЯ WEBPACK (Используем самовызывающуюся функцию) ===
 fun getBrowserCurrentPortName(): String =
     js("(() => { if (typeof currentPort !== 'undefined' && currentPort && currentPort.getInfo) { const info = currentPort.getInfo(); return info.usbProductId ? 'COM' + (info.usbProductId % 10 + 1) : ''; } return ''; })()")

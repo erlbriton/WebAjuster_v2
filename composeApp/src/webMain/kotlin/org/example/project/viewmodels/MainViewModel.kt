@@ -9,49 +9,76 @@ import androidx.compose.runtime.mutableStateOf
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 
-// ЧИСТАЯ TOP-LEVEL ФУНКЦИЯ ДЛЯ KOTLIN/WASM:
-// Только здесь компилятор разрешает использовать встроенный блок js(...)
-fun executeSerialTransceiveJs(hexPacket: String, expectedSize: Int): kotlin.js.JsString? = js(
+// =================================================================================
+// ЧИСТЫЕ TOP-LEVEL ФУНКЦИИ (Используют глобальный window.wasmSerialTransceive)
+// =================================================================================
+
+// Чтение сохраненного имени порта напрямую из window (Решает проблему Unresolved reference)
+fun getWasmPortName(): kotlin.js.JsString = js("window.lastDetectedPortName || ''")
+
+// 1. Исправленная функция для кнопки ID
+fun executeSerialTransceiveJs(hexPacket: String, expectedSize: Int): kotlin.js.Promise<kotlin.js.JsString?>? = js(
     """
     (function() {
         try {
-            var hexIn = hexPacket;
-            var sizeIn = expectedSize;
-            
-            var bytesIn = new Int8Array(hexIn.length / 2);
-            for (var i = 0; i < hexIn.length; i += 2) {
-                bytesIn[i / 2] = parseInt(hexIn.substr(i, 2), 16);
-            }
-            
-            var engine = null;
-            if (typeof org !== 'undefined' && org.example && org.example.project && org.example.project.utils && org.example.project.utils.SerialEngine) {
-                engine = org.example.project.utils.SerialEngine;
-            } else if (typeof SerialEngine !== 'undefined') {
-                engine = SerialEngine;
-            }
-            
-            if (engine) {
-                var respBytes = null;
-                if (typeof engine.transceive === 'function') {
-                    respBytes = engine.transceive(bytesIn, sizeIn);
-                } else if (engine.prototype && typeof engine.prototype.transceive === 'function') {
-                    respBytes = engine.prototype.transceive(bytesIn, sizeIn);
+            if (typeof window.wasmSerialTransceive === 'function') {
+                var bytesIn = new Int8Array(hexPacket.length / 2);
+                for (var i = 0; i < hexPacket.length; i += 2) {
+                    bytesIn[i / 2] = parseInt(hexPacket.substr(i, 2), 16);
                 }
                 
-                if (respBytes) {
+                return window.wasmSerialTransceive(bytesIn, expectedSize).then(function(uint8Array) {
+                    if (!uint8Array || uint8Array.length === 0) return null;
                     var hexOut = "";
-                    for (var j = 0; j < respBytes.length; j++) {
-                        var b = respBytes[j] & 0xFF;
-                        hexOut += b.toString(16).padStart(2, '0');
+                    for (var j = 0; j < uint8Array.length; j++) {
+                        hexOut += (uint8Array[j] & 0xFF).toString(16).padStart(2, '0');
                     }
                     return hexOut;
-                }
+                });
+            } else {
+                console.error("❌ window.wasmSerialTransceive не инициализирован для ID кнопки!");
             }
-        } catch(e) {}
+        } catch(e) {
+            console.error("💥 Ошибка ID команды: " + e.message);
+        }
         return null;
     })()
     """
 )
+
+// 2. Асинхронная функция для вызова опроса таблиц
+fun executeRealTransceiveJsAsync(hexPacket: String, expectedSize: Int): kotlin.js.Promise<kotlin.js.JsString?>? = js(
+    """
+    (function() {
+        try {
+            if (typeof window.wasmSerialTransceive === 'function') {
+                var bytesIn = new Int8Array(hexPacket.length / 2);
+                for (var i = 0; i < hexPacket.length; i += 2) {
+                    bytesIn[i / 2] = parseInt(hexPacket.substr(i, 2), 16);
+                }
+                
+                return window.wasmSerialTransceive(bytesIn, expectedSize).then(function(uint8Array) {
+                    if (!uint8Array || uint8Array.length === 0) return null;
+                    var hexOut = "";
+                    for (var j = 0; j < uint8Array.length; j++) {
+                        hexOut += (uint8Array[j] & 0xFF).toString(16).padStart(2, '0');
+                    }
+                    return hexOut;
+                });
+            } else {
+                console.error("❌ window.wasmSerialTransceive не инициализирован для обновления данных!");
+            }
+        } catch(e) {
+            console.error("💥 Ошибка трансивера опроса: " + e.message);
+        }
+        return null;
+    })()
+    """
+)
+
+// =================================================================================
+// КЛАСС VIEWMODEL
+// =================================================================================
 
 class MainViewModel {
     var currentVarsMap = mapOf<String, Double>()
@@ -329,20 +356,35 @@ class MainViewModel {
 
                 println("--> Отправка 0x03 (Адрес: $startAddress, Кол-во: $regCount), Ожидаем байт: $expectedSize")
 
-                val hexPacketString = fullPacket.joinToString("") { it.toInt().and(0xFF).toString(16).padStart(2, '0') }
-
                 val response: ByteArray? = try {
-                    // ИСПРАВЛЕНИЕ: Вызываем разрешенную изолированную top-level функцию
-                    val returnedJsAny = executeSerialTransceiveJs(hexPacketString, expectedSize)
-                    val hexResult = returnedJsAny?.toString()
+                    val hexPacketString = fullPacket.joinToString("") { it.toInt().and(0xFF).toString(16).padStart(2, '0') }
+
+                    val jsPromise = executeRealTransceiveJsAsync(hexPacketString, expectedSize)
+
+                    var hexResult: String? = null
+                    if (jsPromise != null) {
+                        kotlinx.coroutines.suspendCancellableCoroutine<Unit> { continuation ->
+                            jsPromise.then { jsStr ->
+                                if (jsStr != null) {
+                                    hexResult = jsStr.toString()
+                                }
+                                continuation.resumeWith(Result.success(Unit))
+                                null
+                            }.catch { err ->
+                                println("❌ Ошибка промиса JS при опросе: ${err.toString()}")
+                                continuation.resumeWith(Result.success(Unit))
+                                null
+                            }
+                        }
+                    }
 
                     if (!hexResult.isNullOrEmpty()) {
-                        ByteArray(hexResult.length / 2) { i ->
-                            hexResult.substring(i * 2, i * 2 + 2).toInt(16).toByte()
+                        ByteArray(hexResult!!.length / 2) { i ->
+                            hexResult!!.substring(i * 2, i * 2 + 2).toInt(16).toByte()
                         }
                     } else null
                 } catch (e: Exception) {
-                    println("❌ Ошибка при выполнении Wasm-интеропа: ${e.message}")
+                    println("❌ Ошибка при выполнении SerialEngine.transceive: ${e.message}")
                     null
                 }
 
@@ -377,14 +419,26 @@ class MainViewModel {
                             }
                         }
                     }
+
+                    // ЧИТАЕМ ИМЯ ПОРТА НАПРЯМУЮ ИЗ WINDOW (ИСПРАВЛЕННАЯ СТРОКА)
+                    try {
+                        val portName = getWasmPortName().toString()
+                        if (portName.isNotEmpty()) {
+                            setConnectedPort(portName)
+                        }
+                    } catch(e: Exception) {}
+
                 } else {
                     println("❌ Ошибка Modbus: Устройство не ответило на диапазон $startAddress или размер пакета не совпал.")
                 }
             }
 
-            val currentArea = selectedMemoryArea
-            selectedMemoryArea = ""
-            selectedMemoryArea = currentArea
+            // ЖЕСТКИЙ СБРОС СТЕЙТА ДЛЯ ОБНОВЛЕНИЯ ИНТЕРФЕЙСА ТАБЛИЦЫ
+            androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
+                val currentArea = selectedMemoryArea
+                selectedMemoryArea = ""
+                selectedMemoryArea = currentArea
+            }
 
             println("DEBUG: === СЕТЕВОЙ ОПРОС ЗАВЕРШЕН ===")
         }

@@ -73,6 +73,9 @@ fun LineFifthTable(
                 onClick = {
                     vm.refreshControllerData()
                     println("DEBUG: Запрос данных из контроллера...")
+                    println("DEBUG: Нажата кнопка ОБНОВИТЬ")
+                    println("DEBUG: Текущий выбранный порт = '${vm.selectedComPort}'")
+                    println("DEBUG: Загружен ли файл прибора? = ${vm.currentDevice != null}")
                 }
             )
             Spacer(modifier = Modifier.width(8.dp))
