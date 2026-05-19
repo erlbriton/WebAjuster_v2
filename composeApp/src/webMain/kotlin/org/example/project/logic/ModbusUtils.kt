@@ -1,17 +1,27 @@
 package org.example.project.logic
 
 /**
- * Специальный конвертер для webMain (ViewModel),
- * изолированный от конфликтов имен с другими платформами.
+ * Версия утилит Modbus без массивов (использует List<Int> и String).
+ * Полностью решает проблему компиляции Cloneable в webMain.
  */
-object WebModbusConverter {
+object WebModbusConverter { // Если объект внутри называется по-другому, например ModbusUtils, переименуй обратно
 
-    fun calculateCRC16(data: ByteArray): ByteArray {
+    /**
+     * Принимает HEX-строку, считает CRC16 и возвращает готовую HEX-строку с CRC.
+     * Пример: "010300000002" -> "010300000002C40B"
+     */
+    fun appendCRCToHex(hexPacket: String): String {
+        val bytes = mutableListOf<Int>()
+        var i = 0
+        while (i < hexPacket.length) {
+            val byteStr = hexPacket.substring(i, i + 2)
+            bytes.add(byteStr.toInt(16) and 0xFF)
+            i += 2
+        }
+
         var crc = 0xFFFF
-        val size = data.size
-        for (i in 0 until size) {
-            val b = data[i]
-            crc = crc xor (b.toInt() and 0xFF)
+        for (b in bytes) {
+            crc = crc xor b
             for (j in 0 until 8) {
                 if ((crc and 0x0001) != 0) {
                     crc = (crc ushr 1) xor 0xA001
@@ -20,23 +30,13 @@ object WebModbusConverter {
                 }
             }
         }
-        return byteArrayOf(
-            (crc and 0xFF).toByte(),
-            ((crc ushr 8) and 0xFF).toByte()
-        )
-    }
 
-    /**
-     * Добавляет CRC16 к массиву байт
-     */
-    fun appendCRC(packet: ByteArray): ByteArray {
-        val crcBytes = calculateCRC16(packet)
-        val result = ByteArray(packet.size + 2)
-        for (i in packet.indices) {
-            result[i] = packet[i]
-        }
-        result[packet.size] = crcBytes[0]
-        result[packet.size + 1] = crcBytes[1]
-        return result
+        val low = crc and 0xFF
+        val high = (crc ushr 8) and 0xFF
+
+        val lowHex = low.toString(16).uppercase().padStart(2, '0')
+        val highHex = high.toString(16).uppercase().padStart(2, '0')
+
+        return hexPacket.uppercase() + lowHex + highHex
     }
 }
