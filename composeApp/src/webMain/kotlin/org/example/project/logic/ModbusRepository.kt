@@ -1,20 +1,27 @@
 package org.example.project.logic
 
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.example.project.models.ParameterData
 import org.example.project.models.DeviceInfoIni
+import org.example.project.models.ParameterType
 
+private val modbusMutex = Mutex()
 object ModbusRepository {
 
     fun parseModbusRegister(rawReg: String): Int? {
         // 1. Принудительно в нижний регистр и убираем "r"
         var clean = rawReg.lowercase().removePrefix("r").trim()
-        // 2. Отрезаем точку и всё, что после неё (например, "2020.1" -> "2020")
+        // 2. Отрезаем точку и всё, что после неё
         if (clean.contains(".")) {
             clean = clean.substringBefore(".")
         }
-        // 3. Возвращаем чистый Int адреса регистра
-        return clean.toIntOrNull()
+        // 3. ИСПРАВЛЕНО: Парсим строку как HEX (основание 16)!
+        // Теперь строка "2000" превратится в число 8192 (0x2000).
+        // В логе ты увидишь "Адрес: 8192", но в порт улетит правильный HEX "2000"!
+        return clean.toIntOrNull(16)
     }
+
     fun parseModbusBit(modbusRegStr: String): Int? {
         if (!modbusRegStr.contains(".")) return null
         val bitStr = modbusRegStr.substringAfter(".").trim()
@@ -44,7 +51,8 @@ object ModbusRepository {
             if (currentChunk.isEmpty()) {
                 currentChunk.add(addr)
             } else {
-                if (addr - currentChunk.last() <= 5 && (addr - currentChunk.first() < 60)) {
+                // ИСПРАВЛЕНО: Склеиваем, только если регистры идут подряд И в текущем куске МЕНЬШЕ 10 регистров
+                if (addr - currentChunk.last() == 1 && currentChunk.size < 10 && (addr - currentChunk.first() < 60)) {
                     currentChunk.add(addr)
                 } else {
                     chunks.add(currentChunk)
@@ -98,22 +106,25 @@ object ModbusRepository {
                     list
                 } else null
             } catch (e: Exception) {
-                println("❌ Ошибка при выполнении: ${e.message}")
+                println("❌ Ошибка при выполнении разбора ответа: ${e.message}")
                 null
             }
 
             // Обрабатываем ответ из List<Int>
             if (responseList != null && responseList.size == expectedSize) {
-                val responseValues = mutableListOf<Int>()
+                val addressToValueMap = mutableMapOf<Int, Int>()
+                val startReg = chunk.first()
 
                 for (i in 0 until regCount) {
+                    val currentRegAddress = startReg + i
                     val highByte = responseList[3 + i * 2]
                     val lowByte = responseList[3 + i * 2 + 1]
-                    responseValues.add((highByte shl 8) or lowByte)
+                    val combinedValue = (highByte shl 8) or lowByte
+                    addressToValueMap[currentRegAddress] = combinedValue
                 }
 
-                chunk.forEachIndexed { index, addr ->
-                    val raw16BitValue = responseValues[index]
+                chunk.forEach { addr ->
+                    val raw16BitValue = addressToValueMap[addr] ?: 0
 
                     regToParamsMap[addr]?.forEach { param ->
                         param.hexCtrl = "x" + raw16BitValue.toString(16).uppercase().padStart(4, '0')
@@ -138,7 +149,7 @@ object ModbusRepository {
                 try {
                     val portName = getWasmPortName().toString()
                     if (portName.isNotEmpty()) onPortDetected(portName)
-                } catch(e: Exception) {}
+                } catch (e: Exception) {}
 
             } else {
                 println("❌ Ошибка Modbus: Устройство не ответило или размер пакета не совпал.")
@@ -147,57 +158,93 @@ object ModbusRepository {
         println("DEBUG: === СЕТЕВОЙ ОПРОС ЗАВЕРШЕН ===")
     }
 
-    suspend fun writeSingleParameter(param: ParameterData): Boolean {
-        val regAddress = parseModbusRegister(param.modbusReg) ?: return false
+    /**
+     * Единственная точка входа для записи параметров.
+     * Теперь сама определяет, нужно ли читать регистр перед записью (RMW).
+     */
+    suspend fun writeSingleParameter(param: ParameterData): Boolean = modbusMutex.withLock {
+        val address = parseModbusRegister(param.modbusReg) ?: return false
 
-        // Убираем префикс 'x', оставляя чистый HEX значения контроллера (например, "x00FA" -> "00FA")
-        val cleanHex = param.hexCtrl.removePrefix("x").removePrefix("X")
-        if (cleanHex.isEmpty() || cleanHex == "x") return false
-        val valueHex = cleanHex.padStart(4, '0') // Гарантируем 2 байта значения
+        // 1. Подготовка значения (RMW)
+        val hasExtension = param.modbusReg.contains(".")
+        val finalHexValue = if (hasExtension) {
+            val current = readSingleRegisterDirectly(address) ?: return false
+            val newValue = param.hexCtrl.removePrefix("x").removePrefix("X").toIntOrNull(16) ?: 0
+            val ext = param.modbusReg.substringAfter(".").uppercase()
 
-        val addressHex = regAddress.toString(16).padStart(4, '0') // Адрес регистра
-        val registersCountHex = "0001" // Пишем 1 регистр
-        val bytesCountHex = "02"       // Количество байт данных
-
-        // Сборка кадра 0x10: [Адрес устройства (01)] + [Функция (10)] + [Адрес рег] + [Кол-во рег] + [Кол-во байт] + [Данные]
-        val rawPacketHex = "0110" + addressHex + registersCountHex + bytesCountHex + valueHex
-        val hexPacketString = WebModbusConverter.appendCRCToHex(rawPacketHex)
-
-        // Ответ на команду 0x10 от Modbus-устройства всегда равен 8 байтам
-        val expectedSize = 8
-
-        println("--> Отправка 0x10 (Запись регистра $regAddress, Значение: $valueHex)")
-
-        return try {
-            val jsPromise = executeRealTransceiveJsAsync(hexPacketString, expectedSize)
-            var hexResult: String? = null
-
-            if (jsPromise != null) {
-                kotlinx.coroutines.suspendCancellableCoroutine<Unit> { continuation ->
-                    jsPromise.then { jsStr ->
-                        if (jsStr != null) hexResult = jsStr.toString()
-                        continuation.resumeWith(Result.success(Unit))
-                        null
-                    }.catch { err ->
-                        println("❌ Ошибка промиса JS при записи 0x10: ${err.toString()}")
-                        continuation.resumeWith(Result.success(Unit))
-                        null
-                    }
+            when (ext) {
+                "H" -> (current and 0x00FF) or ((newValue and 0xFF) shl 8)
+                "L" -> (current and 0xFF00) or (newValue and 0xFF)
+                else -> {
+                    val bitPos = ext.toIntOrNull() ?: 0
+                    val bitState = if (param.hexCtrl.contains("1") || param.hexCtrl.lowercase() == "true") 1 else 0
+                    if (bitState == 1) current or (1 shl bitPos) else current and (1 shl bitPos).inv()
                 }
-            }
-
-            // Если пришел ответ нужной длины и эхо-команда совпадает (начинается с 0110)
-            if (!hexResult.isNullOrEmpty() && hexResult!!.length == (expectedSize * 2)) {
-                println("👍 Параметр ${param.code} успешно записан в контроллер! Ответ: $hexResult")
-                true
-            } else {
-                println("❌ Ошибка записи 0x10: Неверный ответ от устройства.")
-                false
-            }
-        } catch (e: Exception) {
-            println("❌ Исключение при отправке 0x10: ${e.message}")
-            false
+            }.toString(16).padStart(4, '0')
+        } else {
+            param.hexCtrl.removePrefix("x").removePrefix("X").padStart(4, '0')
         }
+
+        // 2. Отправка записи
+        val rawPacket = "0110" + address.toString(16).padStart(4, '0') + "000102" + finalHexValue
+        val packetWithCrc = WebModbusConverter.appendCRCToHex(rawPacket)
+
+        return@withLock executeRealTransceiveJsAsync(packetWithCrc, 8) != null
+    }
+
+    /**
+     * Вспомогательная функция для чтения (ваша существующая)
+     */
+    private suspend fun readSingleRegisterDirectly(regAddress: Int): Int? {
+        val startAddrHex = regAddress.toString(16).padStart(4, '0')
+        val rawPacketHex = "0103" + startAddrHex + "0001"
+        val hexPacketString = WebModbusConverter.appendCRCToHex(rawPacketHex)
+        val expectedSize = 7
+
+        val jsPromise = executeRealTransceiveJsAsync(hexPacketString, expectedSize) ?: return null
+        var hexResult: String? = null
+
+        kotlinx.coroutines.suspendCancellableCoroutine<Unit> { continuation ->
+            jsPromise.then { jsStr ->
+                if (jsStr != null) hexResult = jsStr.toString()
+                continuation.resumeWith(Result.success(Unit))
+                null
+            }.catch {
+                continuation.resumeWith(Result.success(Unit))
+                null
+            }
+        }
+
+        if (!hexResult.isNullOrEmpty() && hexResult!!.length == (expectedSize * 2)) {
+            val high = hexResult!!.substring(6, 8).toInt(16)
+            val low = hexResult!!.substring(8, 10).toInt(16)
+            return (high shl 8) or low
+        }
+        return null
+    }
+
+    suspend fun writeByteToRegister(address: Int, modbusReg: String, newValueHex: String): Boolean {
+        // 1. Читаем текущее значение регистра (16 бит)
+        val currentRegValue = readSingleRegisterDirectly(address) ?: return false
+
+        // 2. Парсим новое значение байта из строки
+        val newByteValue = newValueHex.toIntOrNull(16) ?: 0
+
+        // 3. Формируем новое 16-битное значение
+        // Если modbusReg содержит ".H", меняем старший байт, если ".L" - младший
+        val updatedValue = if (modbusReg.contains(".H", ignoreCase = true)) {
+            (currentRegValue and 0x00FF) or ((newByteValue and 0xFF) shl 8)
+        } else {
+            (currentRegValue and 0xFF00) or (newByteValue and 0xFF)
+        }
+
+        // 4. Пишем готовое 16-битное слово обратно
+        val hexValue = updatedValue.toString(16).padStart(4, '0')
+        val rawPacket = "0110" + address.toString(16).padStart(4, '0') + "000102" + hexValue
+        val packetWithCrc = WebModbusConverter.appendCRCToHex(rawPacket)
+
+        // Используем ваш существующий метод выполнения команды
+        return executeRealTransceiveJsAsync(packetWithCrc, 8) != null
     }
 
 }

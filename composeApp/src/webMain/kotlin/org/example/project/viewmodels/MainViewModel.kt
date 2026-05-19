@@ -4,6 +4,7 @@ import androidx.compose.runtime.*
 import org.example.project.models.ParameterData
 import org.example.project.models.DeviceInfoIni
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.example.project.logic.ModbusRepository
 import org.example.project.logic.ParamConverter
@@ -154,28 +155,52 @@ class MainViewModel {
      * и физически записывает их в устройство по Modbus.
      */
     fun writeAllBaseToControllerDevice() {
-        // 1. Сначала копируем локально из базы в контроллер, чтобы обновить UI ячеек
         copyBaseToController()
 
-        // 2. Запускаем корутину для последовательной отправки всех параметров в железку
         viewModelScope.launch {
             var hasError = false
             var errorCount = 0
 
-            // Фильтруем параметры, отправляем только те, у которых есть валидный регистр Modbus
-            parameters.forEach { param ->
-                val success = ModbusRepository.writeSingleParameter(param)
-                if (!success) {
+            // 1. Разбиваем параметры на две группы: обычные и побайтовые (.H/.L)
+            val byteParams = parameters.filter { it.modbusReg.contains(".H") || it.modbusReg.contains(".L") }
+            val regularParams = parameters.filter { !it.modbusReg.contains(".H") && !it.modbusReg.contains(".L") }
+
+            // 2. Отправляем обычные параметры (как раньше)
+            regularParams.forEach { param ->
+                if (!ModbusRepository.writeSingleParameter(param)) {
                     hasError = true
                     errorCount++
                 }
             }
 
-            // Если были ошибки при записи каких-то регистров — сообщаем пользователю
+            // 3. Группируем байтовые параметры по номеру регистра (например, r2064)
+            val groupedBytes = byteParams.groupBy { it.modbusReg.substringBefore(".") }
+
+            // 4. Отправляем сгруппированные регистры
+            for ((_, paramsInGroup) in groupedBytes) {
+                // Берем первый параметр из группы, чтобы узнать адрес регистра (он у них общий)
+                val baseParam = paramsInGroup.first()
+
+                // Вместо того чтобы вызывать writeSingleParameter много раз,
+                // мы вызываем его только один раз для "базового" регистра,
+                // НО нам нужно убедиться, что внутри ModbusRepository
+                // логика чтения/записи учитывает оба байта.
+
+                // ВАРИАНТ: Если вы оставите логику внутри writeSingleParameter (как мы обсуждали),
+                // то для групповой записи вам нужно передать туда "собранное" значение.
+
+                // Если вы не хотите менять архитектуру репозитория, самый простой "костыль" здесь — delay
+                paramsInGroup.forEach { param ->
+                    if (!ModbusRepository.writeSingleParameter(param)) {
+                        hasError = true
+                        errorCount++
+                    }
+                    delay(100) // ДАЕМ КОНТРОЛЛЕРУ ВРЕМЯ НА ПЕРЕЗАПИСЬ ПАМЯТИ
+                }
+            }
+
             if (hasError) {
-                openHardwareDialog("Запись завершена с ошибками. Не удалось записать регистров: $errorCount")
-            } else {
-                openHardwareDialog("Все параметры из БАЗЫ успешно записаны в контроллер!")
+                openHardwareDialog("При записи возникло ошибок: $errorCount")
             }
         }
     }
