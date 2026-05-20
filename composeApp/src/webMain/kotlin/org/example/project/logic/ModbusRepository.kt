@@ -136,9 +136,17 @@ object ModbusRepository {
                             val scaleValue = if (cleanScaleName.isEmpty()) {
                                 1.0
                             } else {
-                                // Ищем ключ в карте, игнорируя регистр букв (CINScale и cinscale — теперь одно и то же)
-                                val exactKey = varsMap.keys.firstOrNull { it.equals(cleanScaleName, ignoreCase = true) }
-                                if (exactKey != null) varsMap[exactKey] ?: 1.0 else 1.0
+                                // 1. Пробуем распарсить как прямое число (заменяя запятую на точку для Kotlin)
+                                val directNumber = cleanScaleName.replace(",", ".").toDoubleOrNull()
+
+                                if (directNumber != null) {
+                                    // Если это число (например, 1 или 0.001) — берем его напрямую!
+                                    directNumber
+                                } else {
+                                    // 2. Если это текст (например, CINScale) — ищем в карте [vars], как и раньше
+                                    val exactKey = varsMap.keys.firstOrNull { it.equals(cleanScaleName, ignoreCase = true) }
+                                    if (exactKey != null) varsMap[exactKey] ?: 1.0 else 1.0
+                                }
                             }
                             val bitNum = parseModbusBit(param.modbusReg)
 
@@ -181,41 +189,37 @@ object ModbusRepository {
             val address = parseModbusRegister(param.modbusReg) ?: return@withLock false
             val hasExtension = param.modbusReg.contains(".")
 
-            // 1. ИСПОЛЬЗУЕМ varsMap: Получаем коэффициент масштабирования для текущего параметра
-            val scaleValue = getScaleValue(param.scaleName, varsMap)
-
-            // Конвертируем введенное пользователем физическое значение physCtrl обратно в число
-            val inputPhysDouble = param.physCtrl.replace(",", ".").toDoubleOrNull() ?: 0.0
+            // ЧИТАЕМ СЫРОЙ HEX ИЗ ЯЧЕЙКИ КОНТРОЛЛЕРА (ТАМ УЖЕ ВСЕ РАЗДЕЛЕНО НА VARS)
+            val currentHexInCell = param.hexCtrl.replace("0x", "").replace("x", "").trim()
+            val raw16BitValue = currentHexInCell.toIntOrNull(16) ?: 0
 
             val finalHexValue = if (hasExtension) {
-                // Читаем текущий регистр (Read-Modify-Write)
+                // Логика записи в отдельные биты/байты (Read-Modify-Write)
                 val current = readSingleRegisterDirectlyInternal(address) ?: return@withLock false
                 val ext = param.modbusReg.substringAfter(".").uppercase()
 
                 when (ext) {
                     "H" -> {
-                        // Применяем коэффициент scaleValue при расчете байта
-                        val rawVal = (inputPhysDouble / scaleValue).toInt() and 0xFF
+                        val rawVal = raw16BitValue and 0xFF
                         (current and 0x00FF) or (rawVal shl 8)
                     }
                     "L" -> {
-                        // Применяем коэффициент scaleValue при расчете байта
-                        val rawVal = (inputPhysDouble / scaleValue).toInt() and 0xFF
+                        val rawVal = raw16BitValue and 0xFF
                         (current and 0xFF00) or rawVal
                     }
                     else -> {
-                        // Работа с битами
                         val bitPos = ext.toIntOrNull() ?: 0
                         val bitState = if (param.physCtrl == "1" || param.physCtrl.lowercase() == "true") 1 else 0
                         if (bitState == 1) current or (1 shl bitPos) else current and (1 shl bitPos).inv()
                     }
                 }.toString(16).padStart(4, '0')
             } else {
-                // 2. ИСПОЛЬЗУЕМ varsMap: делим физ. значение на коэффициент для целого регистра
-                val rawValue = (inputPhysDouble / scaleValue).toInt()
-                rawValue.toString(16).padStart(4, '0')
+                // ДЛЯ ОБЫЧНОГО РЕГИСТРА (как p10900 или CINZ):
+                // Просто отправляем исходное HEX-число. Из 3000 улетит строго "0BB8"
+                raw16BitValue.toString(16).padStart(4, '0')
             }
 
+            // Формирование стандартного пакета Modbus (Функция 0x10) и отправка в порт
             val rawPacket = "0110" + address.toString(16).padStart(4, '0') + "000102" + finalHexValue
             val packetWithCrc = WebModbusConverter.appendCRCToHex(rawPacket)
 

@@ -1,3 +1,5 @@
+//FileUtils.kt
+
 @file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
 
 package org.example.project.utils
@@ -173,9 +175,22 @@ private fun parseIniContent(content: String, fileName: String): DeviceInfoIni? {
                         val calculatedModbusReg = if (isBitType) (parts.getOrNull(5) ?: "") else (parts.getOrNull(4) ?: "")
 
                         // Шкала (vars): для TBit она не нужна вообще (ставим пустую строку), для остальных — parts[6]
+                        // Шкала (vars): для TBit она не нужна вообще (ставим пустую строку), для остальных — parts[6]
                         val scaleName = if (isBitType) "" else (parts.getOrNull(6)?.trim() ?: "")
 
-                        val scaleValue = if (isBitType) 1.0 else (varsMap[scaleName] ?: 1.0)
+// УМНЫЙ ПАРСИНГ ШКАЛЫ: распознаем числовые маски вроде "0,001" на лету
+                        val scaleValue = if (isBitType || scaleName.isEmpty()) {
+                            1.0
+                        } else {
+                            // Пробуем превратить строку в число (заменяя запятую на точку для Kotlin)
+                            val directNumber = scaleName.replace(",", ".").toDoubleOrNull()
+                            if (directNumber != null) {
+                                directNumber // Если это число (например, 0.001) — берем его напрямую!
+                            } else {
+                                // Если это текст (например, "CINScale"), ищем коэффициент в карте [vars]
+                                varsMap[scaleName] ?: 1.0
+                            }
+                        }
 
                         val calculated = when {
                             dataType.equals("TFloat", ignoreCase = true) -> {
@@ -242,9 +257,7 @@ private fun parseIniContent(content: String, fileName: String): DeviceInfoIni? {
         varsMap = varsMap
     )
 }
-
 // --- РЕАЛИЗАЦИЯ ACTUAL ---
-
 actual suspend fun pickDirectory(): List<DeviceInfoIni>? {
     val results = mutableListOf<DeviceInfoIni>()
     try {

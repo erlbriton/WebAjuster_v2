@@ -1,3 +1,5 @@
+//DeviceInfoIni.kt
+
 package org.example.project.models
 
 import androidx.compose.runtime.getValue

@@ -27,13 +27,36 @@ object ParamConverter {
     }
 
     fun updatePhysValue(param: ParameterData, newPhys: String, varsMap: Map<String, Double>, isBase: Boolean) {
+        // 1. Сохраняем введенный пользователем текст в изменяемое поле Physical
         if (isBase) param.physBase = newPhys else param.physCtrl = newPhys
 
-        val physDouble = newPhys.replace(",", ".").toDoubleOrNull() ?: 0.0
-        val scaleValue = varsMap[param.scaleName] ?: 1.0
-        val rawInt = if (scaleValue != 0.0) (physDouble / scaleValue).toInt() else 0
-        val finalHex = "x" + rawInt.toString(16).uppercase().padStart(4, '0')
+        // 2. Извлекаем имя или значение шкалы (например, "CINScale" или "0,001")
+        val cleanScaleName = param.scaleName.trim()
 
-        if (isBase) param.hexBase = finalHex else param.hexCtrl = finalHex
+        // 3. Умное определение коэффициента (VARS)
+        val scaleValue = if (cleanScaleName.isEmpty()) {
+            1.0
+        } else {
+            val directNumber = cleanScaleName.replace(",", ".").toDoubleOrNull()
+            if (directNumber != null) {
+                directNumber // Если шкала числовая (0,001) — берем ее напрямую
+            } else {
+                // Если текстовая (CINScale) — ищем в карте [vars] без учета регистра
+                val exactKey = varsMap.keys.firstOrNull { it.equals(cleanScaleName, ignoreCase = true) }
+                if (exactKey != null) varsMap[exactKey] ?: 1.0 else 1.0
+            }
+        }
+
+        // 4. Переводим введенный текст в число и делим на коэффициент (например, 3 / 0.001 = 3000)
+        val inputDouble = newPhys.replace(",", ".").toDoubleOrNull() ?: 0.0
+        val rawValue = (inputDouble / scaleValue).toInt()
+
+        // 5. Формируем чистую строку HEX и кладем в изменяемую ячейку HEX
+        val hexString = "x" + rawValue.toString(16).uppercase().padStart(4, '0')
+        if (isBase) {
+            param.hexBase = hexString // Используем var поле без 'initial'
+        } else {
+            param.hexCtrl = hexString
+        }
     }
 }
