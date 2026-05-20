@@ -6,6 +6,7 @@ import org.example.project.models.DeviceInfoIni
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import org.example.project.logic.ModbusRepository
 import org.example.project.logic.ParamConverter
 
@@ -35,6 +36,7 @@ class MainViewModel {
     var selectedComPort by mutableStateOf("")
 
     private val viewModelScope = MainScope()
+
 
     companion object {
         lateinit var instance: MainViewModel
@@ -143,7 +145,8 @@ class MainViewModel {
 
     fun writeParameterToDevice(param: ParameterData) {
         viewModelScope.launch {
-            val success = ModbusRepository.writeSingleParameter(param)
+            val currentDevice = currentDeviceState.value ?: return@launch
+            val success = ModbusRepository.writeSingleParameter(param, currentDevice.varsMap)
             if (!success) {
                 openHardwareDialog("Ошибка записи параметра ${param.code} в контроллер.")
             }
@@ -167,7 +170,7 @@ class MainViewModel {
 
             // 2. Отправляем обычные параметры (как раньше)
             regularParams.forEach { param ->
-                if (!ModbusRepository.writeSingleParameter(param)) {
+                if (!ModbusRepository.writeSingleParameter(param, currentVarsMap)) {
                     hasError = true
                     errorCount++
                 }
@@ -191,7 +194,7 @@ class MainViewModel {
 
                 // Если вы не хотите менять архитектуру репозитория, самый простой "костыль" здесь — delay
                 paramsInGroup.forEach { param ->
-                    if (!ModbusRepository.writeSingleParameter(param)) {
+                    if (!ModbusRepository.writeSingleParameter(param, currentVarsMap)) {
                         hasError = true
                         errorCount++
                     }

@@ -176,7 +176,31 @@ private fun parseIniContent(content: String, fileName: String): DeviceInfoIni? {
                         val scaleName = if (isBitType) "" else (parts.getOrNull(6)?.trim() ?: "")
 
                         val scaleValue = if (isBitType) 1.0 else (varsMap[scaleName] ?: 1.0)
-                        val calculated = rawInt * scaleValue
+
+                        val calculated = when {
+                            dataType.equals("TFloat", ignoreCase = true) -> {
+                                Float.fromBits(rawInt).toDouble() * scaleValue
+                            }
+                            // Знаковые 16-битные типы (например, TInt, TShort, TSign)
+                            dataType.equals("TInt", ignoreCase = true) ||
+                                    dataType.equals("TShort", ignoreCase = true) ||
+                                    dataType.equals("TSign", ignoreCase = true) -> {
+                                // Превращаем 0xFFFF в -1
+                                val shortVal = (rawInt and 0xFFFF).toShort()
+                                shortVal.toDouble() * scaleValue
+                            }
+                            // Знаковые 8-битные типы (если есть TByte со знаком)
+                            dataType.equals("TSignedByte", ignoreCase = true) -> {
+                                val byteVal = (rawInt and 0xFF).toByte()
+                                byteVal.toDouble() * scaleValue
+                            }
+                            // Беззнаковые типы (TWord, TByte и остальные)
+                            else -> {
+                                // Маскируем под 16 бит для TWord, чтобы не вылез мусор
+                                val cleanInt = if (dataType.equals("TWord", ignoreCase = true)) rawInt and 0xFFFF else rawInt
+                                cleanInt * scaleValue
+                            }
+                        }
                         val physicalValue = if (calculated % 1.0 == 0.0) calculated.toInt().toString() else calculated.toString()
 
                         val parameter = ParameterData(
