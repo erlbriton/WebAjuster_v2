@@ -4,6 +4,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.suspendCancellableCoroutine
+import org.example.project.logic.ModbusRepository.parseModbusRegister
 import kotlin.coroutines.resume
 import org.example.project.models.ParameterData
 import org.example.project.models.DeviceInfoIni
@@ -62,6 +63,11 @@ object ModbusRepository {
             allValidParams.forEach { param ->
                 val regAddress = parseModbusRegister(param.modbusReg)!!
                 regToParamsMap.getOrPut(regAddress) { mutableListOf() }.add(param)
+
+                // ЖЕЛЕЗНО ВКЛЮЧАЕМ ВТОРОЙ РЕГИСТР В СПИСОК ОПРОСА ДЛЯ 32-БИТНЫХ ТИПОВ
+                if (param.dataType.equals("TFloat", ignoreCase = true)) {
+                    regToParamsMap.getOrPut(regAddress + 1) { mutableListOf() }
+                }
             }
 
             val sortedAddresses = regToParamsMap.keys.sorted()
@@ -115,6 +121,7 @@ object ModbusRepository {
                 }
 
                 if (responseList != null && responseList.size == expectedSize) {
+                    // 1. Набиваем карту сырых регистров из буфера ответа
                     val addressToValueMap = mutableMapOf<Int, Int>()
                     val startReg = chunk.first()
 
@@ -122,48 +129,65 @@ object ModbusRepository {
                         val currentRegAddress = startReg + i
                         val highByte = responseList[3 + i * 2]
                         val lowByte = responseList[3 + i * 2 + 1]
-                        val combinedValue = (highByte shl 8) or lowByte
-                        addressToValueMap[currentRegAddress] = combinedValue
+                        addressToValueMap[currentRegAddress] = (highByte shl 8) or lowByte
                     }
 
-                    chunk.forEach { addr ->
-                        val raw16BitValue = addressToValueMap[addr] ?: 0
+                    // 2. СТРОИМ КАРТУ ПО УНИКАЛЬНЫМ КОДАМ ПАРАМЕТРОВ (p16600, p10900)
+                    // Собираем все параметры, которые входят в текущую пачку (chunk) регистров
+                    val paramsInThisChunk = chunk.flatMap { regToParamsMap[it] ?: emptyList() }.distinctBy { it.code }
 
-                        regToParamsMap[addr]?.forEach { param ->
-                            param.hexCtrl = "x" + raw16BitValue.toString(16).uppercase().padStart(4, '0')
+                    // 3. ОБРАБАТЫВАЕМ КАЖДЫЙ ПАРАМЕТР РОВНО ОДИН РАЗ
+                    paramsInThisChunk.forEach { param ->
+                        val isTFloat = param.dataType.equals("TFloat", ignoreCase = true)
+                        val baseAddress = parseModbusRegister(param.modbusReg)!!
 
-                            val cleanScaleName = param.scaleName.trim()
-                            val scaleValue = if (cleanScaleName.isEmpty()) {
-                                1.0
-                            } else {
-                                // 1. Пробуем распарсить как прямое число (заменяя запятую на точку для Kotlin)
-                                val directNumber = cleanScaleName.replace(",", ".").toDoubleOrNull()
+                        // Читаем из карты ровно столько, сколько требует тип
+                        val rawValue: Long = if (isTFloat) {
+                            val r1 = addressToValueMap[baseAddress] ?: 0       // Младшее слово (Low Word)
+                            val r2 = addressToValueMap[baseAddress + 1] ?: 0   // Старшее слово (High Word)
 
-                                if (directNumber != null) {
-                                    // Если это число (например, 1 или 0.001) — берем его напрямую!
-                                    directNumber
-                                } else {
-                                    // 2. Если это текст (например, CINScale) — ищем в карте [vars], как и раньше
-                                    val exactKey = varsMap.keys.firstOrNull { it.equals(cleanScaleName, ignoreCase = true) }
-                                    if (exactKey != null) varsMap[exactKey] ?: 1.0 else 1.0
-                                }
-                            }
-                            val bitNum = parseModbusBit(param.modbusReg)
+                            // Склеиваем 32-битное число ((r2 << 16) | r1)
+                            ((r2 and 0xFFFF).toLong() shl 16) or (r1 and 0xFFFF).toLong()
+                        } else {
+                            (addressToValueMap[baseAddress] ?: 0).toLong()     // Обычные 16-битные
+                        }
 
-                            val finalPhysValue = if (bitNum != null) {
-                                ((raw16BitValue shr bitNum) and 1).toDouble()
-                            } else {
-                                raw16BitValue * scaleValue
-                            }
+                        // Записываем HEX (8 символов для TFloat, 4 символа для 16-бит)
+                        if (isTFloat) {
+                            param.hexCtrl = "x" + rawValue.toString(16).uppercase().padStart(8, '0')
+                        } else {
+                            param.hexCtrl = "x" + (rawValue and 0xFFFF).toString(16).uppercase().padStart(4, '0')
+                        }
 
-                            param.physCtrl = if (finalPhysValue % 1.0 == 0.0) {
-                                finalPhysValue.toInt().toString()
-                            } else {
-                                finalPhysValue.toString()
-                            }
+                        // Считаем шкалу
+                        val cleanScaleName = param.scaleName.trim()
+                        val scaleValue = if (cleanScaleName.isEmpty()) 1.0 else {
+                            val directNumber = cleanScaleName.replace(",", ".").toDoubleOrNull()
+                            if (directNumber != null) directNumber else (varsMap[cleanScaleName] ?: 1.0)
+                        }
+
+                        // Расчет физического значения
+                        val bitNum = parseModbusBit(param.modbusReg)
+                        val finalPhysValue = if (bitNum != null) {
+                            ((rawValue shr bitNum) and 1).toDouble()
+                        } else if (isTFloat) {
+                            // Превращаем биты обратно во Float и умножаем на коэффициент
+                            val floatVal = Float.fromBits(rawValue.toInt()).toDouble()
+                            val rawCalculated = floatVal * scaleValue
+                            kotlin.math.round(rawCalculated * 10000.0) / 10000.0 // Фильтр хвостов IEEE 754
+                        } else {
+                            (rawValue and 0xFFFF) * scaleValue
+                        }
+
+                        // Вывод физики на экран
+                        param.physCtrl = if (finalPhysValue % 1.0 == 0.0) {
+                            finalPhysValue.toLong().toString()
+                        } else {
+                            finalPhysValue.toString()
                         }
                     }
 
+                    // Обновление имени порта в UI
                     try {
                         val portName = getWasmPortName().toString()
                         if (portName.isNotEmpty()) onPortDetected(portName)
@@ -187,56 +211,55 @@ object ModbusRepository {
     suspend fun writeSingleParameter(param: ParameterData, varsMap: Map<String, Double>): Boolean {
         return modbusMutex.withLock {
             val address = parseModbusRegister(param.modbusReg) ?: return@withLock false
+            val isTFloat = param.dataType.equals("TFloat", ignoreCase = true)
             val hasExtension = param.modbusReg.contains(".")
 
-            // ЧИТАЕМ СЫРОЙ HEX ИЗ ЯЧЕЙКИ КОНТРОЛЛЕРА (ТАМ УЖЕ ВСЕ РАЗДЕЛЕНО НА VARS)
             val currentHexInCell = param.hexCtrl.replace("0x", "").replace("x", "").trim()
-            val raw16BitValue = currentHexInCell.toIntOrNull(16) ?: 0
 
-            val finalHexValue = if (hasExtension) {
-                // Логика записи в отдельные биты/байты (Read-Modify-Write)
-                val current = readSingleRegisterDirectlyInternal(address) ?: return@withLock false
-                val ext = param.modbusReg.substringAfter(".").uppercase()
+            val rawPacket = if (isTFloat) {
+                // ЗАПИСЬ 32-БИТНОГО ПАРАМЕТРА (TFloat)
+                val raw32BitValue = currentHexInCell.toLongOrNull(16) ?: 0L
 
-                when (ext) {
-                    "H" -> {
-                        val rawVal = raw16BitValue and 0xFF
-                        (current and 0x00FF) or (rawVal shl 8)
-                    }
-                    "L" -> {
-                        val rawVal = raw16BitValue and 0xFF
-                        (current and 0xFF00) or rawVal
-                    }
-                    else -> {
-                        val bitPos = ext.toIntOrNull() ?: 0
-                        val bitState = if (param.physCtrl == "1" || param.physCtrl.lowercase() == "true") 1 else 0
-                        if (bitState == 1) current or (1 shl bitPos) else current and (1 shl bitPos).inv()
-                    }
-                }.toString(16).padStart(4, '0')
+                // Распиливаем одно 32-битное число на два регистра по нашей Си-логике
+                val (reg1, reg2) = split32BitValue(raw32BitValue)
+
+                val reg1Hex = reg1.toString(16).padStart(4, '0')
+                val reg2Hex = reg2.toString(16).padStart(4, '0')
+
+                // Формируем пакет функции 0x10: Записать 2 регистра (0002), длина данных 4 байта (04)
+                // Передаем сначала reg1 (Low), затем reg2 (High)
+                "0110" + address.toString(16).padStart(4, '0') + "000204" + reg1Hex + reg2Hex
             } else {
-                // ДЛЯ ОБЫЧНОГО РЕГИСТРА (как p10900 или CINZ):
-                // Просто отправляем исходное HEX-число. Из 3000 улетит строго "0BB8"
-                raw16BitValue.toString(16).padStart(4, '0')
+                // ЗАПИСЬ ОБЫЧНОГО 16-БИТНОГО ПАРАМЕТРА
+                val raw16BitValue = currentHexInCell.toIntOrNull(16) ?: 0
+                val finalHexValue = if (hasExtension) {
+                    // Логика побитовой маски (Read-Modify-Write)
+                    val current = readSingleRegisterDirectlyInternal(address) ?: return@withLock false
+                    val ext = param.modbusReg.substringAfter(".").uppercase()
+                    when (ext) {
+                        "H" -> (current and 0x00FF) or ((raw16BitValue and 0xFF) shl 8)
+                        "L" -> (current and 0xFF00) or (raw16BitValue and 0xFF)
+                        else -> {
+                            val bitPos = ext.toIntOrNull() ?: 0
+                            val bitState = if (param.physCtrl == "1" || param.physCtrl.lowercase() == "true") 1 else 0
+                            if (bitState == 1) current or (1 shl bitPos) else current and (1 shl bitPos).inv()
+                        }
+                    }
+                } else {
+                    raw16BitValue
+                }
+
+                val hexWord = finalHexValue.toString(16).padStart(4, '0')
+                // Функция 0x10: Записать 1 регистр (0001), длина данных 2 байта (02)
+                "0110" + address.toString(16).padStart(4, '0') + "000102" + hexWord
             }
 
-            // Формирование стандартного пакета Modbus (Функция 0x10) и отправка в порт
-            val rawPacket = "0110" + address.toString(16).padStart(4, '0') + "000102" + finalHexValue
             val packetWithCrc = WebModbusConverter.appendCRCToHex(rawPacket)
-
             val writeResult = safeTransceiveAwait(packetWithCrc, 8)
             delay(40)
 
             return@withLock writeResult != null
         }
-    }
-
-    private fun getScaleValue(scaleName: String, varsMap: Map<String, Double>): Double {
-        val cleanName = scaleName.trim()
-        if (cleanName.isEmpty()) return 1.0
-        if (varsMap.containsKey(cleanName)) return varsMap[cleanName] ?: 1.0
-        val foundKey = varsMap.keys.firstOrNull { it.equals(cleanName, ignoreCase = true) }
-        if (foundKey != null) return varsMap[foundKey] ?: 1.0
-        return cleanName.replace(",", ".").toDoubleOrNull() ?: 1.0
     }
 
     /**
@@ -297,4 +320,21 @@ object ModbusRepository {
             return@withLock writeResult != null
         }
     }
+
+/**
+ * Собирает 32-битное число из двух 16-битных регистров (Low Word / High Word Swap)
+ */
+fun build32BitValue(reg1: Int, reg2: Int): Long {
+    // reg1 - первый регистр из прибора (Low Word), reg2 - второй (High Word)
+    return ((reg2 and 0xFFFF).toLong() shl 16) or (reg1 and 0xFFFF).toLong()
 }
+
+/**
+ * Распиливает 32-битное число на два 16-битных регистра для отправки по Modbus
+ */
+fun split32BitValue(value32: Long): Pair<Int, Int> {
+    val reg2 = ((value32 shr 16) and 0xFFFF).toInt() // High Word
+    val reg1 = (value32 and 0xFFFF).toInt()         // Low Word
+    return Pair(reg1, reg2)
+}
+    }

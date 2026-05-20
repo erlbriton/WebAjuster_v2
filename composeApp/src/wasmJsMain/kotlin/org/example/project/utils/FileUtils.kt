@@ -216,7 +216,20 @@ private fun parseIniContent(content: String, fileName: String): DeviceInfoIni? {
                                 cleanInt * scaleValue
                             }
                         }
-                        val physicalValue = if (calculated % 1.0 == 0.0) calculated.toInt().toString() else calculated.toString()
+                        // Умное округление: если тип TFloat, округляем до 4 знаков после запятой, чтобы убрать мусор IEEE 754
+                        val roundedCalculated = if (dataType.equals("TFloat", ignoreCase = true)) {
+                            // Округляем до 4 знаков после запятой
+                            kotlin.math.round(calculated * 10000.0) / 10000.0
+                        } else {
+                            calculated
+                        }
+
+// Выводим строку без лишних нулей (.0) на конце
+                        val physicalValue = if (roundedCalculated % 1.0 == 0.0) {
+                            roundedCalculated.toLong().toString()
+                        } else {
+                            roundedCalculated.toString()
+                        }
 
                         val parameter = ParameterData(
                             code = pCode,

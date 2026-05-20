@@ -27,34 +27,42 @@ object ParamConverter {
     }
 
     fun updatePhysValue(param: ParameterData, newPhys: String, varsMap: Map<String, Double>, isBase: Boolean) {
-        // 1. Сохраняем введенный пользователем текст в изменяемое поле Physical
+        // 1. Сохраняем текст в физическое поле
         if (isBase) param.physBase = newPhys else param.physCtrl = newPhys
 
-        // 2. Извлекаем имя или значение шкалы (например, "CINScale" или "0,001")
+        // 2. Ищем коэффициент шкалы (числовой или из vars)
         val cleanScaleName = param.scaleName.trim()
-
-        // 3. Умное определение коэффициента (VARS)
         val scaleValue = if (cleanScaleName.isEmpty()) {
             1.0
         } else {
             val directNumber = cleanScaleName.replace(",", ".").toDoubleOrNull()
             if (directNumber != null) {
-                directNumber // Если шкала числовая (0,001) — берем ее напрямую
+                directNumber
             } else {
-                // Если текстовая (CINScale) — ищем в карте [vars] без учета регистра
                 val exactKey = varsMap.keys.firstOrNull { it.equals(cleanScaleName, ignoreCase = true) }
                 if (exactKey != null) varsMap[exactKey] ?: 1.0 else 1.0
             }
         }
 
-        // 4. Переводим введенный текст в число и делим на коэффициент (например, 3 / 0.001 = 3000)
+        // 3. Парсим введенное пользователем число
         val inputDouble = newPhys.replace(",", ".").toDoubleOrNull() ?: 0.0
-        val rawValue = (inputDouble / scaleValue).toInt()
+        val isTFloat = param.dataType.equals("TFloat", ignoreCase = true)
 
-        // 5. Формируем чистую строку HEX и кладем в изменяемую ячейку HEX
-        val hexString = "x" + rawValue.toString(16).uppercase().padStart(4, '0')
+        // 4. ГЕНЕРАЦИЯ HEX СТРОГО ПО ТИПУ ДАННЫХ
+        val hexString = if (isTFloat) {
+            // Си-логика: Физика / Шкала -> Float -> Биты -> 32-битный HEX
+            val rawFloat = (inputDouble / scaleValue).toFloat()
+            val bits = rawFloat.toBits()
+            "x" + (bits.toLong() and 0xFFFFFFFFL).toString(16).uppercase().padStart(8, '0')
+        } else {
+            // Для обычных 16-битных параметров
+            val rawValue = (inputDouble / scaleValue).toInt() and 0xFFFF
+            "x" + rawValue.toString(16).uppercase().padStart(4, '0')
+        }
+
+        // 5. Записываем правильный HEX обратно в модель
         if (isBase) {
-            param.hexBase = hexString // Используем var поле без 'initial'
+            param.hexBase = hexString
         } else {
             param.hexCtrl = hexString
         }
