@@ -159,27 +159,45 @@ object ModbusRepository {
                             param.hexCtrl = "x" + (rawValue and 0xFFFF).toString(16).uppercase().padStart(4, '0')
                         }
 
-                        // Считаем шкалу
+                        // 1. УМНЫЙ ПОИСК КОЭФФИЦИЕНТА ШКАЛЫ С ОЧИСТКОЙ КЛЮЧЕЙ КАРТЫ
                         val cleanScaleName = param.scaleName.trim()
-                        val scaleValue = if (cleanScaleName.isEmpty()) 1.0 else {
+                        val scaleValue = if (cleanScaleName.isEmpty()) {
+                            1.0
+                        } else {
                             val directNumber = cleanScaleName.replace(",", ".").toDoubleOrNull()
-                            if (directNumber != null) directNumber else (varsMap[cleanScaleName] ?: 1.0)
+                            if (directNumber != null) {
+                                directNumber
+                            } else {
+                                // Ищем ключ в varsMap, обрезая пробелы у каждого ключа карты
+                                val exactKey = varsMap.keys.firstOrNull { it.trim().equals(cleanScaleName, ignoreCase = true) }
+                                if (exactKey != null) varsMap[exactKey] ?: 1.0 else 1.0
+                            }
                         }
-
-                        // Расчет физического значения
+                        if (param.code.equals("p19100", ignoreCase = true)) {
+                            println("🔍 ЛОГ ДЛЯ p19100 -> сырое число: $rawValue, имя шкалы в INI: '${param.scaleName}', scaleValue: $scaleValue")
+                            println("📋 СОДЕРЖИМОЕ КАРТЫ varsMap В МОМЕНТ ОПРОСА:")
+                            if (varsMap.isEmpty()) {
+                                println("   [!] КАРТА varsMap СОВЕРШЕННО ПУСТАЯ!")
+                            } else {
+                                varsMap.forEach { (key, value) -> println("   Ключ: '$key' -> Значение: $value") }
+                            }
+                        }
+// 2. ВЫЧИСЛЕНИЕ ФИЗИЧЕСКОГО ЗНАЧЕНИЯ С УЧЕТОМ НАЙДЕННОЙ ШКАЛЫ
                         val bitNum = parseModbusBit(param.modbusReg)
                         val finalPhysValue = if (bitNum != null) {
                             ((rawValue shr bitNum) and 1).toDouble()
-                        } else if (isTFloat) {
-                            // Превращаем биты обратно во Float и умножаем на коэффициент
+                        } else if (param.dataType.equals("TFloat", ignoreCase = true)) {
+                            // Ветка для 32-битных Float параметров
                             val floatVal = Float.fromBits(rawValue.toInt()).toDouble()
                             val rawCalculated = floatVal * scaleValue
-                            kotlin.math.round(rawCalculated * 10000.0) / 10000.0 // Фильтр хвостов IEEE 754
+                            kotlin.math.round(rawCalculated * 10000.0) / 10000.0
                         } else {
+                            // Ветка для ВСЕХ ОСТАЛЬНЫХ ТИПОВ (включая TWORD p19100)
+                            // Берем сырое значение (16) и умножаем на scaleValue (0.1) -> получим 1.6
                             (rawValue and 0xFFFF) * scaleValue
                         }
 
-                        // Вывод физики на экран
+// 3. ВЫВОД НА ЭКРАН (физическое значение контроллера)
                         param.physCtrl = if (finalPhysValue % 1.0 == 0.0) {
                             finalPhysValue.toLong().toString()
                         } else {
@@ -321,20 +339,19 @@ object ModbusRepository {
         }
     }
 
-/**
- * Собирает 32-битное число из двух 16-битных регистров (Low Word / High Word Swap)
- */
-fun build32BitValue(reg1: Int, reg2: Int): Long {
-    // reg1 - первый регистр из прибора (Low Word), reg2 - второй (High Word)
-    return ((reg2 and 0xFFFF).toLong() shl 16) or (reg1 and 0xFFFF).toLong()
-}
-
-/**
- * Распиливает 32-битное число на два 16-битных регистра для отправки по Modbus
- */
-fun split32BitValue(value32: Long): Pair<Int, Int> {
-    val reg2 = ((value32 shr 16) and 0xFFFF).toInt() // High Word
-    val reg1 = (value32 and 0xFFFF).toInt()         // Low Word
-    return Pair(reg1, reg2)
-}
+    /**
+     * Собирает 32-битное число из двух 16-битных регистров (Low Word / High Word Swap)
+     */
+    fun build32BitValue(reg1: Int, reg2: Int): Long {
+        return ((reg2 and 0xFFFF).toLong() shl 16) or (reg1 and 0xFFFF).toLong()
     }
+
+    /**
+     * Распиливает 32-битное число на два 16-битных регистра для отправки по Modbus
+     */
+    fun split32BitValue(value32: Long): Pair<Int, Int> {
+        val reg2 = ((value32 shr 16) and 0xFFFF).toInt() // High Word
+        val reg1 = (value32 and 0xFFFF).toInt()         // Low Word
+        return Pair(reg1, reg2)
+    }
+}

@@ -79,6 +79,7 @@ class MainViewModel {
     fun selectDevice(device: DeviceInfoIni) {
         selectedDeviceId = device.id
         currentDeviceState.value = device
+        currentVarsMap = device.varsMap // ЖЕЛЕЗНО ПЕРЕДАЕМ ШКАЛЫ ПРИ ВЫБОРЕ ПРИБОРА
         installationLocation = device.location
         typeMechanism = device.Description.ifEmpty { "" }
         refreshParametersList()
@@ -145,8 +146,8 @@ class MainViewModel {
 
     fun writeParameterToDevice(param: ParameterData) {
         viewModelScope.launch {
-            val currentDevice = currentDeviceState.value ?: return@launch
-            val success = ModbusRepository.writeSingleParameter(param, currentDevice.varsMap)
+            if (currentDeviceState.value == null) return@launch
+            val success = ModbusRepository.writeSingleParameter(param, currentVarsMap) // Берем согласованную карту шкал
             if (!success) {
                 openHardwareDialog("Ошибка записи параметра ${param.code} в контроллер.")
             }
