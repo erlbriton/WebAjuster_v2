@@ -197,11 +197,21 @@ object ModbusRepository {
                             (rawValue and 0xFFFF) * scaleValue
                         }
 
-// 3. ВЫВОД НА ЭКРАН (физическое значение контроллера)
-                        param.physCtrl = if (finalPhysValue % 1.0 == 0.0) {
-                            finalPhysValue.toLong().toString()
+// 3. ВЫВОД НА ЭКРАН (физическое значение контроллера с поддержкой TPrmList)
+                        if (param.dataType.equals("TPrmList", ignoreCase = true)) {
+                            // Приводим текущий HEX к нижнему регистру для поиска (например, "x06")
+                            val currentHexKey = param.hexCtrl.trim().lowercase()
+                            // Парсим карту вариантов из строки scaleName
+                            val prmMap = ParamConverter.parsePrmList(param.scaleName)
+                            // Ищем текст по HEX-ключу. Если не нашли — выводим исходный HEX
+                            param.physCtrl = prmMap[currentHexKey] ?: param.hexCtrl
                         } else {
-                            finalPhysValue.toString()
+                            // Стандартный вывод для всех остальных числовых типов
+                            param.physCtrl = if (finalPhysValue % 1.0 == 0.0) {
+                                finalPhysValue.toLong().toString()
+                            } else {
+                                finalPhysValue.toString()
+                            }
                         }
                     }
 

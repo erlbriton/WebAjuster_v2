@@ -67,4 +67,28 @@ object ParamConverter {
             param.hexCtrl = hexString
         }
     }
+    /**
+     * Парсит строку TPrmList вида "BPS//x06#115200/x05#57600/"
+     * Возвращает карту, где ключ — это HEX (например, "x06"), а значение — текст ("115200")
+     */
+    fun parsePrmList(scaleName: String): Map<String, String> {
+        val result = mutableMapOf<String, String>()
+        if (!scaleName.contains("//")) return result
+
+        // Отрезаем заголовок (все что до //)
+        val itemsRaw = scaleName.substringAfter("//").trim()
+
+        // Бьем строку по разделителю "/"
+        val tokens = itemsRaw.split("/")
+        for (token in tokens) {
+            val cleanToken = token.trim()
+            // Ищем элементы, содержащие знак решетки "#" (например, x06#115200)
+            if (cleanToken.contains("#")) {
+                val hexKey = cleanToken.substringBefore("#").trim().lowercase() // "x06"
+                val textValue = cleanToken.substringAfter("#").trim()          // "115200"
+                result[hexKey] = textValue
+            }
+        }
+        return result
+    }
 }
