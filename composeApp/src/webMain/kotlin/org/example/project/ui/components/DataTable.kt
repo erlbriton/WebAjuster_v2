@@ -264,11 +264,21 @@ private fun ParameterRow(
     onClick: () -> Unit
 ) {
     val vm = LocalMainViewModel.current
-    val hexMismatch = (param.hexBase.replace("x", "").toLongOrNull(16) ?: 0L) !=
-            (param.hexCtrl.replace("x", "").toLongOrNull(16) ?: 0L)
+    // Очищаем hexBase от "x" и лишних нулей (парсим как hex),
+    // а hexCtrl парсим как обычное целое (так как там теперь 0 или 1)
+    val baseVal = param.hexBase.replace("x", "").toLongOrNull(16) ?: 0L
+    val ctrlVal = param.hexCtrl.toLongOrNull() ?: 0L
 
-    val physMismatch = (param.physBase.toDoubleOrNull() ?: 0.0) !=
-            (param.physCtrl.toDoubleOrNull() ?: 0.0)
+    // 1. Сравниваем HEX: убираем 'x', приводим к числу (Long), если там просто 0/1 — тоже сработает
+    val baseHexStr = (param.hexBase.toLongOrNull(16) ?: 0L).toString()
+    val ctrlHexStr = (param.hexCtrl.toLongOrNull(16) ?: 0L).toString()
+    val hexMismatch = baseHexStr != ctrlHexStr
+
+    // 2. Сравниваем PHYS: приводим к Double, чтобы 1.0 == 1
+    val basePhysNum = param.physBase.toDoubleOrNull() ?: 0.0
+    val ctrlPhysNum = param.physCtrl.toDoubleOrNull() ?: 0.0
+    val physMismatch = basePhysNum != ctrlPhysNum
+    val isTBit = param.dataType.equals("TBit", ignoreCase = true)
 
     Row(
         modifier = modifier // 2. Применяем его ПЕРВЫМ (он принесет цвет фона из LazyColumn)
@@ -284,33 +294,65 @@ private fun ParameterRow(
         val redColor  = Color(0xFFD32F2F)
         val normColor = Color(0xFF212121)
 
-        EditableCell(weights[4], param.hexBase,  if (hexMismatch)  redColor else normColor, onValueChange = { vm.updateHexBase(param, it) })
-        EditableCell(weights[5], param.physBase, if (physMismatch) redColor else normColor, onValueChange = { vm.updatePhysBase(param, it) })
+        // 4-й столбец (БАЗА) - Заменяем 'x' на пробелы, чтобы длина осталась прежней
+        EditableCell(
+            weight = weights[4],
+            value = if (isTBit) param.hexBase.replace("x", " ").replace("0x", " ") else param.hexBase,
+            textColor = if (hexMismatch) redColor else normColor,
+            onValueChange = { vm.updateHexBase(param, it) }
+        )
 
-// КОНТРОЛЛЕР (добавили отправку по Enter)
+        // 5-й столбец (PHYS BASE)
+        EditableCell(
+            weight = weights[5],
+            value = if (isTBit) param.physBase.replace("x", " ").replace("0x", " ") else param.physBase,
+            textColor = if (physMismatch) redColor else normColor,
+            onValueChange = { vm.updatePhysBase(param, it) }
+        )
+
+        // 6-й столбец (КОНТРОЛЛЕР)
         EditableCell(
             weight = weights[6],
-            value = param.hexCtrl,
+            value = if (isTBit) param.hexCtrl.replace("x", " ").replace("0x", " ") else param.hexCtrl,
             textColor = if (hexMismatch) redColor else normColor,
             onValueChange = { vm.updateHexCtrl(param, it) },
             onEnterPressed = { vm.writeParameterToDevice(param) }
         )
+
+        // 7-й столбец (PHYS CTRL)
         EditableCell(
             weight = weights[7],
-            value = param.physCtrl,
+            value = if (isTBit) param.physCtrl.replace("x", " ").replace("0x", " ") else param.physCtrl,
             textColor = if (physMismatch) redColor else normColor,
             onValueChange = { newValue ->
-                // Проверка: тип BIT и ввод только 0/1 или пустота
                 if (param.type == org.example.project.models.ParameterType.TBit) {
                     if (newValue == "0" || newValue == "1" || newValue.isEmpty()) {
                         vm.updatePhysCtrl(param, newValue)
                     }
                 } else {
-                    vm.updatePhysCtrl(param, newValue) // Для остальных типов разрешаем всё
+                    vm.updatePhysCtrl(param, newValue)
                 }
             },
             onEnterPressed = { vm.writeParameterToDevice(param) }
         )
+        EditableCell(
+            weight = weights[7],
+            // Если это TBit, отображаем без 'x', иначе как есть
+            value = if (isTBit) param.physCtrl.replace("x", "") else param.physCtrl,
+            textColor = if (physMismatch) redColor else normColor,
+            onValueChange = { newValue ->
+                // Логика валидации при вводе остается прежней
+                if (param.type == org.example.project.models.ParameterType.TBit) {
+                    if (newValue == "0" || newValue == "1" || newValue.isEmpty()) {
+                        vm.updatePhysCtrl(param, newValue)
+                    }
+                } else {
+                    vm.updatePhysCtrl(param, newValue)
+                }
+            },
+            onEnterPressed = { vm.writeParameterToDevice(param) }
+        )
+
     }
 }
 

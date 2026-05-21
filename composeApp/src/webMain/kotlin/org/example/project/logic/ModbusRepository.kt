@@ -152,17 +152,15 @@ object ModbusRepository {
                             (addressToValueMap[baseAddress] ?: 0).toLong()     // Обычные 16-битные
                         }
 
-                        // Записываем HEX (8 символов для TFloat, 4 символа для 16-бит)
+                        // Записываем HEX (8 символов для TFloat, 4 символа для 16-бит, без префикса 'x')
                         val bitNum = parseModbusBit(param.modbusReg)
                         if (bitNum != null) {
-                            // Срабатывает ТОЛЬКО для битов (например, "0x2064.0")
                             val bitValue = (rawValue shr bitNum) and 1
-                            param.hexCtrl = "x0" + bitValue.toString()
+                            param.hexCtrl = bitValue.toString() // Теперь "0" или "1"
+                            param.physCtrl = bitValue.toString() // И в Physical тоже "0" или "1"
                         } else if (isTFloat) {
-                            // Срабатывает для TFloat - этот блок остался НЕИЗМЕННЫМ
                             param.hexCtrl = "x" + rawValue.toString(16).uppercase().padStart(8, '0')
                         } else {
-                            // Срабатывает для всех остальных (TWord, TByte и т.д.)
                             param.hexCtrl = "x" + (rawValue and 0xFFFF).toString(16).uppercase().padStart(4, '0')
                         }
 
@@ -243,7 +241,8 @@ object ModbusRepository {
             val isTFloat = param.dataType.equals("TFloat", ignoreCase = true)
             val hasExtension = param.modbusReg.contains(".")
 
-            val currentHexInCell = param.hexCtrl.replace("0x", "").replace("x", "").trim()
+            // Убираем всё, кроме цифр и букв A-F
+            val currentHexInCell = param.hexCtrl.filter { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }
 
             val rawPacket = if (isTFloat) {
                 // ЗАПИСЬ 32-БИТНОГО ПАРАМЕТРА (TFloat)
