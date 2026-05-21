@@ -264,8 +264,11 @@ private fun ParameterRow(
     onClick: () -> Unit
 ) {
     val vm = LocalMainViewModel.current
-    val hexMismatch  = param.hexBase.trim() != param.hexCtrl.trim()
-    val physMismatch = param.physBase.trim() != param.physCtrl.trim()
+    val hexMismatch = (param.hexBase.replace("x", "").toLongOrNull(16) ?: 0L) !=
+            (param.hexCtrl.replace("x", "").toLongOrNull(16) ?: 0L)
+
+    val physMismatch = (param.physBase.toDoubleOrNull() ?: 0.0) !=
+            (param.physCtrl.toDoubleOrNull() ?: 0.0)
 
     Row(
         modifier = modifier // 2. Применяем его ПЕРВЫМ (он принесет цвет фона из LazyColumn)
@@ -296,7 +299,16 @@ private fun ParameterRow(
             weight = weights[7],
             value = param.physCtrl,
             textColor = if (physMismatch) redColor else normColor,
-            onValueChange = { vm.updatePhysCtrl(param, it) },
+            onValueChange = { newValue ->
+                // Проверка: тип BIT и ввод только 0/1 или пустота
+                if (param.type == org.example.project.models.ParameterType.TBit) {
+                    if (newValue == "0" || newValue == "1" || newValue.isEmpty()) {
+                        vm.updatePhysCtrl(param, newValue)
+                    }
+                } else {
+                    vm.updatePhysCtrl(param, newValue) // Для остальных типов разрешаем всё
+                }
+            },
             onEnterPressed = { vm.writeParameterToDevice(param) }
         )
     }

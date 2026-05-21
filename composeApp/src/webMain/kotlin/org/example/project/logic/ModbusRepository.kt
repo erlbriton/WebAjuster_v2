@@ -153,9 +153,16 @@ object ModbusRepository {
                         }
 
                         // Записываем HEX (8 символов для TFloat, 4 символа для 16-бит)
-                        if (isTFloat) {
+                        val bitNum = parseModbusBit(param.modbusReg)
+                        if (bitNum != null) {
+                            // Срабатывает ТОЛЬКО для битов (например, "0x2064.0")
+                            val bitValue = (rawValue shr bitNum) and 1
+                            param.hexCtrl = "x0" + bitValue.toString()
+                        } else if (isTFloat) {
+                            // Срабатывает для TFloat - этот блок остался НЕИЗМЕННЫМ
                             param.hexCtrl = "x" + rawValue.toString(16).uppercase().padStart(8, '0')
                         } else {
+                            // Срабатывает для всех остальных (TWord, TByte и т.д.)
                             param.hexCtrl = "x" + (rawValue and 0xFFFF).toString(16).uppercase().padStart(4, '0')
                         }
 
@@ -173,17 +180,11 @@ object ModbusRepository {
                                 if (exactKey != null) varsMap[exactKey] ?: 1.0 else 1.0
                             }
                         }
-                        if (param.code.equals("p19100", ignoreCase = true)) {
-                            println("🔍 ЛОГ ДЛЯ p19100 -> сырое число: $rawValue, имя шкалы в INI: '${param.scaleName}', scaleValue: $scaleValue")
-                            println("📋 СОДЕРЖИМОЕ КАРТЫ varsMap В МОМЕНТ ОПРОСА:")
-                            if (varsMap.isEmpty()) {
-                                println("   [!] КАРТА varsMap СОВЕРШЕННО ПУСТАЯ!")
-                            } else {
-                                varsMap.forEach { (key, value) -> println("   Ключ: '$key' -> Значение: $value") }
-                            }
+                        if (param.code.equals("p13321", ignoreCase = true)) {
+                            println("DEBUG: Параметр ${param.code} обновлен. RawValue: $rawValue, Итоговый hexCtrl: ${param.hexCtrl}")
                         }
 // 2. ВЫЧИСЛЕНИЕ ФИЗИЧЕСКОГО ЗНАЧЕНИЯ С УЧЕТОМ НАЙДЕННОЙ ШКАЛЫ
-                        val bitNum = parseModbusBit(param.modbusReg)
+                     //   val bitNum = parseModbusBit(param.modbusReg)
                         val finalPhysValue = if (bitNum != null) {
                             ((rawValue shr bitNum) and 1).toDouble()
                         } else if (param.dataType.equals("TFloat", ignoreCase = true)) {
