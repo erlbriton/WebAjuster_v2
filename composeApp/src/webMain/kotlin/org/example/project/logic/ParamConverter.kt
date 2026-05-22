@@ -32,45 +32,57 @@ object ParamConverter {
     }
 
     fun updatePhysValue(param: ParameterData, newPhys: String, varsMap: Map<String, Double>, isBase: Boolean) {
-        // 1. Сохраняем текст в физическое поле
         if (isBase) param.physBase = newPhys else param.physCtrl = newPhys
 
-        // 2. Ищем коэффициент шкалы (числовой или из vars)
-        val cleanScaleName = param.scaleName.trim()
-        val scaleValue = if (cleanScaleName.isEmpty()) {
-            1.0
-        } else {
-            val directNumber = cleanScaleName.replace(",", ".").toDoubleOrNull()
-            if (directNumber != null) {
-                directNumber
-            } else {
-                val exactKey = varsMap.keys.firstOrNull { it.equals(cleanScaleName, ignoreCase = true) }
-                if (exactKey != null) varsMap[exactKey] ?: 1.0 else 1.0
+        val isPrmList = param.dataType.equals("TPrmList", ignoreCase = true)
+        var targetValue = newPhys.replace(",", ".").toDoubleOrNull() ?: 0.0
+
+        // Если это список параметров и ввели/выбрали текст, а не число
+        if (isPrmList && newPhys.toDoubleOrNull() == null) {
+            val prmMap = parsePrmList(param.scaleName)
+            val matchedHex = prmMap.entries.firstOrNull { it.value.trim().equals(newPhys.trim(), ignoreCase = true) }?.key
+            if (matchedHex != null) {
+                targetValue = matchedHex.replace("x", "").toIntOrNull(16)?.toDouble() ?: 0.0
             }
         }
 
-        // 3. Парсим введенное пользователем число
-        val inputDouble = newPhys.replace(",", ".").toDoubleOrNull() ?: 0.0
-        val isTFloat = param.dataType.equals("TFloat", ignoreCase = true)
+        // Вычисляем чистое 16-битное значение для параметра
+        val cleanScaleName = param.scaleName.trim()
+        val scaleValue = if (cleanScaleName.isEmpty() || isPrmList) 1.0 else {
+            val directNumber = cleanScaleName.replace(",", ".").toDoubleOrNull()
+            directNumber ?: varsMap[cleanScaleName] ?: 1.0
+        }
+        val calculatedRaw = (targetValue / scaleValue).toInt() and 0xFFFF
 
-        // 4. ГЕНЕРАЦИЯ HEX СТРОГО ПО ТИПУ ДАННЫХ
-        val hexString = if (isTFloat) {
-            // Си-логика: Физика / Шкала -> Float -> Биты -> 32-битный HEX
-            val rawFloat = (inputDouble / scaleValue).toFloat()
-            val bits = rawFloat.toBits()
-            "x" + (bits.toLong() and 0xFFFFFFFFL).toString(16).uppercase().padStart(8, '0')
-        } else {
-            // Для обычных 16-битных параметров
-            val rawValue = (inputDouble / scaleValue).toInt() and 0xFFFF
-            "x" + rawValue.toString(16).uppercase().padStart(4, '0')
+        // --- НАЧАЛО БЛОКА ЗАЩИТЫ БАЙТОВЫХ РЕГИСТРОВ (.L / .H) ---
+        val currentHex = if (isBase) param.hexBase else param.hexCtrl
+        val cleanCurrentHex = currentHex.replace("x", "").padStart(4, '0')
+        val currentFullInt = cleanCurrentHex.toIntOrNull(16) ?: 0
+
+        val hexString = when {
+            param.dataType.equals("TFloat", ignoreCase = true) -> {
+                val bits = (targetValue / scaleValue).toFloat().toBits()
+                "x" + (bits.toLong() and 0xFFFFFFFFL).toString(16).uppercase().padStart(8, '0')
+            }
+            param.modbusReg.contains(".L", ignoreCase = true) -> {
+                // Оставляем старший байт нетронутым, меняем только младший
+                val highByte = currentFullInt and 0xFF00
+                val newLowByte = calculatedRaw and 0x00FF
+                "x" + (highByte or newLowByte).toString(16).uppercase().padStart(4, '0')
+            }
+            param.modbusReg.contains(".H", ignoreCase = true) -> {
+                // Оставляем младший байт нетронутым, меняем только старший
+                val lowByte = currentFullInt and 0x00FF
+                val newHighByte = (calculatedRaw and 0x00FF) shl 8
+                "x" + (newHighByte or lowByte).toString(16).uppercase().padStart(4, '0')
+            }
+            else -> {
+                // Для обычных 16-битных регистров
+                "x" + calculatedRaw.toString(16).uppercase().padStart(4, '0')
+            }
         }
 
-        // 5. Записываем правильный HEX обратно в модель
-        if (isBase) {
-            param.hexBase = hexString
-        } else {
-            param.hexCtrl = hexString
-        }
+        if (isBase) param.hexBase = hexString else param.hexCtrl = hexString
     }
 
     /**
@@ -81,17 +93,33 @@ object ParamConverter {
         val result = mutableMapOf<String, String>()
         if (!scaleName.contains("//")) return result
 
-        // Отрезаем заголовок (все что до //)
+        // Забираем всё, что строго после "//"
         val itemsRaw = scaleName.substringAfter("//").trim()
 
-        // Бьем строку по разделителю "/"
+        // Разделяем элементы списка по косой черте
         val tokens = itemsRaw.split("/")
         for (token in tokens) {
             val cleanToken = token.trim()
-            // Ищем элементы, содержащие знак решетки "#" (например, x06#115200)
-            if (cleanToken.contains("#")) {
-                val hexKey = cleanToken.substringBefore("#").trim().lowercase() // "x06"
-                val textValue = cleanToken.substringAfter("#").trim()          // "115200"
+
+            // Нам нужны только те элементы, которые содержат и префикс 'x', и решетку '#'
+            // Это гарантированно отсечет пустые слэши (///) и замыкающий "/x00/"
+            if (cleanToken.isEmpty() || !cleanToken.contains("#") || !cleanToken.startsWith("x")) {
+                continue
+            }
+
+            // Выделяем hex-ключ (все до первой решетки, например "x01")
+            val hexKey = cleanToken.substringBefore("#").trim().lowercase()
+
+            // Выделяем значимый текст (все, что между первой и второй решеткой)
+            val remainder = cleanToken.substringAfter("#")
+            val textValue = if (remainder.contains("#")) {
+                remainder.substringBefore("#").trim()
+            } else {
+                remainder.trim()
+            }
+
+            // Дополнительная проверка на валидность ключа (например, x01 или x00)
+            if (hexKey.length >= 3 && textValue.isNotEmpty()) {
                 result[hexKey] = textValue
             }
         }

@@ -313,10 +313,37 @@ private fun ParameterRow(
         val redColor  = Color(0xFFD32F2F)
         val normColor = Color(0xFF212121)
 
-        // Объединяем флаги: если есть несовпадение в HEX ИЛИ в Physical — красим всё
         val hasAnyMismatch = hexMismatch || physMismatch
 
-        // 4-й и 5-й столбцы (БАЗА)
+        // ─── ДОБАВЛЯЕМ ЛОГИКУ ДЛЯ TPRMLIST ───
+            // val isPrmList = param.dataType.equals("TPrmList", ignoreCase = true)
+        val isPrmList = param.dataType.trim().equals("TPrmList", ignoreCase = true)
+        val prmMap = if (isPrmList) org.example.project.logic.ParamConverter.parsePrmList(param.scaleName) else emptyMap()
+
+        // Вспомогательная мини-функция для поиска текстового описания по значению (hex или числу)
+        val getPrmText: (String) -> String = { rawVal ->
+            // Приводим к чистому текстовому числу (без префиксов)
+            val clean = rawVal.replace("x", "").replace("0x", "").trim().lowercase()
+            val intVal = clean.toIntOrNull(16) ?: clean.toIntOrNull()
+
+            if (intVal != null) {
+                // Выделяем младший байт (актуально для регистров .L, где прилетает xFF00 вместо x00)
+                val lowByte = intVal and 0xFF
+
+                // Ищем ключ в карте, который математически равен lowByte
+                val matchingEntry = prmMap.entries.firstOrNull { (key, _) ->
+                    val keyInt = key.replace("x", "").toIntOrNull(16)
+                    keyInt == lowByte
+                }
+                // Если нашли совпадение — выводим чистый текст (например, "Iz"), иначе сырое значение
+                matchingEntry?.value ?: rawVal
+            } else {
+                // Если это уже чистый текст, выбранный пользователем из списка
+                if (prmMap.values.contains(rawVal)) rawVal else prmMap["x$clean"] ?: rawVal
+            }
+        }
+
+        // 4-й столбец (БАЗА hex)
         EditableCell(
             weight = weights[4],
             value = if (isTBit) {
@@ -324,15 +351,20 @@ private fun ParameterRow(
                 if (clean.isEmpty()) "" else clean.toLongOrNull(16)?.toString() ?: clean
             } else param.hexBase,
             textColor = if (hasAnyMismatch) redColor else normColor,
-            onValueChange = { vm.updateHexBase(param, it) }
+            onValueChange = { vm.updateHexBase(param, it) },
+            prmList = prmMap,
+            isHexColumn = true
         )
+
+        // 5-й столбец (БАЗА Physical)
         EditableCell(
             weight = weights[5],
-            value = if (isTBit) {
+            value = if (isPrmList) {
+                getPrmText(param.physBase) // Выводим текст ("AIN_DI") вместо "x01"
+            } else if (isTBit) {
                 val clean = param.physBase.replace("x", "").replace("0x", "")
                 if (clean.isEmpty()) "" else clean.toLongOrNull()?.toString() ?: clean
             } else {
-                // Округляем до 5 знаков, если это число
                 val num = param.physBase.replace(",", ".").toDoubleOrNull()
                 if (num != null) {
                     val rounded = kotlin.math.round(num * 100000.0) / 100000.0
@@ -340,10 +372,12 @@ private fun ParameterRow(
                 } else param.physBase
             },
             textColor = if (hasAnyMismatch) redColor else normColor,
-            onValueChange = { vm.updatePhysBase(param, it) }
-        )///////////////////////////////////////////////////////////////////////////////////////////
+            onValueChange = { vm.updatePhysBase(param, it) },
+            prmList = prmMap,
+            isHexColumn = false
+        )
 
-        // 6-й и 7-й столбцы (КОНТРОЛЛЕР)
+        // 6-й столбец (КОНТРОЛЛЕР hex)
         EditableCell(
             weight = weights[6],
             value = if (isTBit) {
@@ -352,15 +386,20 @@ private fun ParameterRow(
             } else param.hexCtrl,
             textColor = if (hasAnyMismatch) redColor else normColor,
             onValueChange = { vm.updateHexCtrl(param, it) },
-            onEnterPressed = { vm.writeParameterToDevice(param) }
+            onEnterPressed = { vm.writeParameterToDevice(param) },
+            prmList = prmMap,
+            isHexColumn = true
         )
+
+        // 7-й столбец (КОНТРОЛЛЕР Physical)
         EditableCell(
             weight = weights[7],
-            value = if (isTBit) {
+            value = if (isPrmList) {
+                getPrmText(param.physCtrl) // Выводим текст ("AIN_DI") вместо "x01"
+            } else if (isTBit) {
                 val clean = param.physCtrl.replace("x", "").replace("0x", "")
                 if (clean.isEmpty()) "" else clean.toLongOrNull()?.toString() ?: clean
             } else {
-                // Округляем до 5 знаков, если это число
                 val num = param.physCtrl.replace(",", ".").toDoubleOrNull()
                 if (num != null) {
                     val rounded = kotlin.math.round(num * 100000.0) / 100000.0
@@ -377,7 +416,9 @@ private fun ParameterRow(
                     vm.updatePhysCtrl(param, newValue)
                 }
             },
-            onEnterPressed = { vm.writeParameterToDevice(param) }
+            onEnterPressed = { vm.writeParameterToDevice(param) },
+            prmList = prmMap,
+            isHexColumn = false
         )///////////////////////////////////////////////////////////////////////////////////////////
     }
 }
@@ -427,13 +468,17 @@ private fun RowScope.ReadOnlyCell(
 }
 
 // --- ОБНОВЛЕННАЯ РЕДАКТИРУЕМАЯ ЯЧЕЙКА (с центрированием) ---
+// --- ОБНОВЛЕННАЯ РЕДАКТИРУЕМАЯ ЯЧЕЙКА С ПОДДЕРЖКОЙ ВЫПАДАЮЩЕГО СПИСКА ---
 @Composable
 private fun RowScope.EditableCell(
     weight: Float,
     value: String,
     textColor: Color,
     onValueChange: (String) -> Unit,
-    onEnterPressed: (() -> Unit)? = null // 1. Новый параметр
+    onEnterPressed: (() -> Unit)? = null,
+    // Вот эти два параметра компилятор сейчас потерял. Добавляем их сюда:
+    prmList: Map<String, String> = emptyMap(),
+    isHexColumn: Boolean = false
 ) {
     Box(
         modifier = Modifier
@@ -442,36 +487,87 @@ private fun RowScope.EditableCell(
             .padding(horizontal = 2.dp),
         contentAlignment = Alignment.Center
     ) {
-        BasicTextField(
-            value         = value,
-            onValueChange = onValueChange,
-            singleLine    = true,
-            textStyle     = TextStyle(
-                fontSize  = 12.sp,
-                color     = textColor,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
-            ),
-            modifier      = Modifier
-                .fillMaxWidth()
-                // 2. Врезаем перехват клавиши Enter, если передан коллбек
-                .then(
-                    if (onEnterPressed != null) {
-                        Modifier.onKeyEvent { keyEvent ->
-                            // Проверяем, что нажата кнопка Enter ИЛИ NumPadEnter
-                            val isEnter = keyEvent.key == androidx.compose.ui.input.key.Key.Enter ||
-                                    keyEvent.key == androidx.compose.ui.input.key.Key.NumPadEnter
+        if (prmList.isNotEmpty()) {
+            // Режим Dropdown (Выпадающий список для TPrmList)
+            var expanded by remember { mutableStateOf(false) }
 
-                            if (isEnter && keyEvent.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) {
-                                onEnterPressed()
-                                true // Событие обработано, фокус не улетит
-                            } else {
-                                false
-                            }
-                        }
-                    } else Modifier
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .background(Color.Black.copy(alpha = 0.03f))
+                    .padding(vertical = 2.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = value,
+                    fontSize = 12.sp,
+                    color = textColor,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-        )
+
+                // Стандартное всплывающее меню Material3
+                androidx.compose.material3.DropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    prmList.forEach { (hexKey, textValue) ->
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = "$hexKey — $textValue",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            },
+                            onClick = {
+                                expanded = false
+                                if (isHexColumn) {
+                                    onValueChange(hexKey) // Передаем "x01"
+                                } else {
+                                    onValueChange(textValue) // Передаем "AIN_DI"
+                                }
+                                // Сразу триггерим отправку данных, если это колонка контроллера
+                                onEnterPressed?.invoke()
+                            }
+                        )
+                    }
+                }
+            }
+        } else {
+            // ОБЫЧНЫЙ РЕЖИМ (Текстовое поле для ввода руками)
+            BasicTextField(
+                value         = value,
+                onValueChange = onValueChange,
+                singleLine    = true,
+                textStyle     = TextStyle(
+                    fontSize  = 12.sp,
+                    color     = textColor,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                ),
+                modifier      = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (onEnterPressed != null) {
+                            Modifier.onKeyEvent { keyEvent ->
+                                val isEnter = keyEvent.key == androidx.compose.ui.input.key.Key.Enter ||
+                                        keyEvent.key == androidx.compose.ui.input.key.Key.NumPadEnter
+
+                                if (isEnter && keyEvent.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) {
+                                    onEnterPressed()
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                        } else Modifier
+                    )
+            )
+        }
     }
 }
 
