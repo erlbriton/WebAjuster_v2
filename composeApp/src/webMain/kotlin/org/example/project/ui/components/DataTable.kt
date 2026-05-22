@@ -294,35 +294,39 @@ private fun ParameterRow(
         val redColor  = Color(0xFFD32F2F)
         val normColor = Color(0xFF212121)
 
-        // 4-й столбец (БАЗА) - Заменяем 'x' на пробелы, чтобы длина осталась прежней
+        // 4-й и 5-й столбцы (БАЗА)
         EditableCell(
             weight = weights[4],
-            value = if (isTBit) param.hexBase.replace("x", " ").replace("0x", " ") else param.hexBase,
+            value = if (isTBit) {
+                param.hexBase.replace("x", "").replace("0x", "").toLongOrNull(16)?.toString() ?: "0"
+            } else param.hexBase,
             textColor = if (hexMismatch) redColor else normColor,
             onValueChange = { vm.updateHexBase(param, it) }
         )
-
-        // 5-й столбец (PHYS BASE)
         EditableCell(
             weight = weights[5],
-            value = if (isTBit) param.physBase.replace("x", " ").replace("0x", " ") else param.physBase,
+            value = if (isTBit) {
+                param.physBase.replace("x", "").replace("0x", "").toLongOrNull()?.toString() ?: "0"
+            } else param.physBase,
             textColor = if (physMismatch) redColor else normColor,
             onValueChange = { vm.updatePhysBase(param, it) }
         )
 
-        // 6-й столбец (КОНТРОЛЛЕР)
+        // 6-й и 7-й столбцы (КОНТРОЛЛЕР)
         EditableCell(
             weight = weights[6],
-            value = if (isTBit) param.hexCtrl.replace("x", " ").replace("0x", " ") else param.hexCtrl,
+            value = if (isTBit) {
+                param.hexCtrl.replace("x", "").replace("0x", "").toLongOrNull(16)?.toString() ?: "0"
+            } else param.hexCtrl,
             textColor = if (hexMismatch) redColor else normColor,
             onValueChange = { vm.updateHexCtrl(param, it) },
             onEnterPressed = { vm.writeParameterToDevice(param) }
         )
-
-        // 7-й столбец (PHYS CTRL)
         EditableCell(
             weight = weights[7],
-            value = if (isTBit) param.physCtrl.replace("x", " ").replace("0x", " ") else param.physCtrl,
+            value = if (isTBit) {
+                param.physCtrl.replace("x", "").replace("0x", "").toLongOrNull()?.toString() ?: "0"
+            } else param.physCtrl,
             textColor = if (physMismatch) redColor else normColor,
             onValueChange = { newValue ->
                 if (param.type == org.example.project.models.ParameterType.TBit) {
