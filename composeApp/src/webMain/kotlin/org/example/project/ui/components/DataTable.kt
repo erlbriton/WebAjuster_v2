@@ -335,24 +335,6 @@ private fun ParameterRow(
             },
             onEnterPressed = { vm.writeParameterToDevice(param) }
         )
-        EditableCell(
-            weight = weights[7],
-            // Если это TBit, отображаем без 'x', иначе как есть
-            value = if (isTBit) param.physCtrl.replace("x", "") else param.physCtrl,
-            textColor = if (physMismatch) redColor else normColor,
-            onValueChange = { newValue ->
-                // Логика валидации при вводе остается прежней
-                if (param.type == org.example.project.models.ParameterType.TBit) {
-                    if (newValue == "0" || newValue == "1" || newValue.isEmpty()) {
-                        vm.updatePhysCtrl(param, newValue)
-                    }
-                } else {
-                    vm.updatePhysCtrl(param, newValue)
-                }
-            },
-            onEnterPressed = { vm.writeParameterToDevice(param) }
-        )
-
     }
 }
 
