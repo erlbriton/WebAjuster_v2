@@ -270,15 +270,34 @@ private fun ParameterRow(
     val ctrlVal = param.hexCtrl.toLongOrNull() ?: 0L
 
     // 1. Сравниваем HEX: убираем 'x', приводим к числу (Long), если там просто 0/1 — тоже сработает
-    val baseHexStr = (param.hexBase.toLongOrNull(16) ?: 0L).toString()
-    val ctrlHexStr = (param.hexCtrl.toLongOrNull(16) ?: 0L).toString()
-    val hexMismatch = baseHexStr != ctrlHexStr
-
-    // 2. Сравниваем PHYS: приводим к Double, чтобы 1.0 == 1
-    val basePhysNum = param.physBase.toDoubleOrNull() ?: 0.0
-    val ctrlPhysNum = param.physCtrl.toDoubleOrNull() ?: 0.0
-    val physMismatch = basePhysNum != ctrlPhysNum
     val isTBit = param.dataType.equals("TBit", ignoreCase = true)
+
+    // 1. Безопасное сравнение HEX (с предварительной очисткой от префиксов)
+    val cleanHexBase = param.hexBase.replace("x", "").replace("0x", "")
+    val cleanHexCtrl = param.hexCtrl.replace("x", "").replace("0x", "")
+
+    val baseHexLong = cleanHexBase.toLongOrNull(16)
+    val ctrlHexLong = cleanHexCtrl.toLongOrNull(16)
+
+    // Если оба успешно распарсились как числа — сравниваем их математически, иначе сравниваем очищенные строки
+    val hexMismatch = if (baseHexLong != null && ctrlHexLong != null) {
+        baseHexLong != ctrlHexLong
+    } else {
+        cleanHexBase.trim() != cleanHexCtrl.trim()
+    }
+
+    // 2. Безопасное сравнение PHYSICAL
+    val cleanPhysBase = param.physBase.replace("x", "").replace("0x", "")
+    val cleanPhysCtrl = param.physCtrl.replace("x", "").replace("0x", "")
+
+    val basePhysNum = cleanPhysBase.toDoubleOrNull()
+    val ctrlPhysNum = cleanPhysCtrl.toDoubleOrNull()
+
+    val physMismatch = if (basePhysNum != null && ctrlPhysNum != null) {
+        basePhysNum != ctrlPhysNum
+    } else {
+        cleanPhysBase.trim() != cleanPhysCtrl.trim()
+    }
 
     Row(
         modifier = modifier // 2. Применяем его ПЕРВЫМ (он принесет цвет фона из LazyColumn)
