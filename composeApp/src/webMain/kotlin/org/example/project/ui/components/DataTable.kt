@@ -350,11 +350,14 @@ private fun ParameterRow(
             value = if (isTBit) {
                 val clean = param.hexBase.replace("x", "").replace("0x", "")
                 if (clean.isEmpty()) "" else clean.toLongOrNull(16)?.toString() ?: clean
+            } else if (isPrmList) {
+                // Приводим hex базы к чистому виду (из x0000 берем младший байт и выводим как x00)
+                val clean = param.hexBase.replace("x", "").replace("0x", "").trim()
+                val intVal = clean.toIntOrNull(16) ?: clean.toIntOrNull()
+                if (intVal != null) "x" + (intVal and 0xFF).toString(16).padStart(2, '0').lowercase() else param.hexBase
             } else param.hexBase,
             textColor = if (hasAnyMismatch) redColor else normColor,
-            onValueChange = { vm.updateHexBase(param, it) },
-            prmList = prmMap,
-            isHexColumn = true
+            onValueChange = { vm.updateHexBase(param, it) }
         )
 
         // 5-й столбец (БАЗА Physical)
@@ -384,12 +387,15 @@ private fun ParameterRow(
             value = if (isTBit) {
                 val clean = param.hexCtrl.replace("x", "").replace("0x", "")
                 if (clean.isEmpty()) "" else clean.toLongOrNull(16)?.toString() ?: clean
+            } else if (isPrmList) {
+                // Приводим hex контроллера к чистому виду (например, из x0101 или численного 257 берем только младший байт x01)
+                val clean = param.hexCtrl.replace("x", "").replace("0x", "").trim()
+                val intVal = clean.toIntOrNull(16) ?: clean.toIntOrNull()
+                if (intVal != null) "x" + (intVal and 0xFF).toString(16).padStart(2, '0').uppercase() else param.hexCtrl
             } else param.hexCtrl,
             textColor = if (hasAnyMismatch) redColor else normColor,
             onValueChange = { vm.updateHexCtrl(param, it) },
-            onEnterPressed = { vm.writeParameterToDevice(param) },
-            prmList = prmMap,
-            isHexColumn = true
+            onEnterPressed = { vm.writeParameterToDevice(param) }
         )
 
         // 7-й столбец (КОНТРОЛЛЕР Physical)
