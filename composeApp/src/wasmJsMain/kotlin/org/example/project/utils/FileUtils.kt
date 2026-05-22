@@ -174,9 +174,23 @@ private fun parseIniContent(content: String, fileName: String): DeviceInfoIni? {
                         val calculatedUnit = if (isBitType) "*" else (parts.getOrNull(5) ?: "")
                         val calculatedModbusReg = if (isBitType) (parts.getOrNull(5) ?: "") else (parts.getOrNull(4) ?: "")
 
-                        // Шкала (vars): для TBit она не нужна вообще (ставим пустую строку), для остальных — parts[6]
-                        // Шкала (vars): для TBit она не нужна вообще (ставим пустую строку), для остальных — parts[6]
-                        val scaleName = if (isBitType) "" else (parts.getOrNull(6)?.trim() ?: "")
+                        // --- ИСПРАВЛЕНИЕ ДЛЯ TPRMLIST ---
+                        val scaleName = if (isBitType) {
+                            ""
+                        } else if (dataType.equals("TPrmList", ignoreCase = true)) {
+                            // Если это список, забираем ВЕСЬ хвост исходной строки rawData,
+                            // начиная от регистра Modbus (parts[4]), чтобы сохранить структуру слэшей и решёток
+                            val indexAfterReg = rawData.indexOf(calculatedModbusReg)
+                            if (indexAfterReg != -1) {
+                                // Отрезаем "r2010.L" и получаем чистый хвост "///x01#cos(ф)..."
+                                rawData.substring(indexAfterReg + calculatedModbusReg.length).trim()
+                            } else {
+                                rawData
+                            }
+                        } else {
+                            // Для обычных числовых параметров берём стандартный 6-й элемент
+                            parts.getOrNull(6)?.trim() ?: ""
+                        }
 
 // УМНЫЙ ПАРСИНГ ШКАЛЫ: распознаем числовые маски вроде "0,001" на лету
                         val scaleValue = if (isBitType || scaleName.isEmpty()) {

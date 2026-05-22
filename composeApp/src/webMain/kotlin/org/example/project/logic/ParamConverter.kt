@@ -65,22 +65,23 @@ object ParamConverter {
                 "x" + (bits.toLong() and 0xFFFFFFFFL).toString(16).uppercase().padStart(8, '0')
             }
             param.modbusReg.contains(".L", ignoreCase = true) -> {
-                // Оставляем старший байт нетронутым, меняем только младший
+                // Выделяем ТЕКУЩИЙ старший байт, какой бы он ни был (хоть 0700, хоть любой другой)
                 val highByte = currentFullInt and 0xFF00
+                // Обновляем только младший байт
                 val newLowByte = calculatedRaw and 0x00FF
                 "x" + (highByte or newLowByte).toString(16).uppercase().padStart(4, '0')
             }
             param.modbusReg.contains(".H", ignoreCase = true) -> {
-                // Оставляем младший байт нетронутым, меняем только старший
+                // Выделяем ТЕКУЩИЙ младший байт
                 val lowByte = currentFullInt and 0x00FF
+                // Обновляем только старший байт
                 val newHighByte = (calculatedRaw and 0x00FF) shl 8
                 "x" + (newHighByte or lowByte).toString(16).uppercase().padStart(4, '0')
             }
             else -> {
-                // Для обычных 16-битных регистров
                 "x" + calculatedRaw.toString(16).uppercase().padStart(4, '0')
             }
-        }
+        }///////////////////////////////////////////////////////////////////////////////////////////\
 
         if (isBase) param.hexBase = hexString else param.hexCtrl = hexString
     }
