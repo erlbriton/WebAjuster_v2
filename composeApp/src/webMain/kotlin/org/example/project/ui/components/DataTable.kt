@@ -294,6 +294,9 @@ private fun ParameterRow(
         val redColor  = Color(0xFFD32F2F)
         val normColor = Color(0xFF212121)
 
+        // Объединяем флаги: если есть несовпадение в HEX ИЛИ в Physical — красим всё
+        val hasAnyMismatch = hexMismatch || physMismatch
+
         // 4-й и 5-й столбцы (БАЗА)
         EditableCell(
             weight = weights[4],
@@ -301,7 +304,7 @@ private fun ParameterRow(
                 val clean = param.hexBase.replace("x", "").replace("0x", "")
                 if (clean.isEmpty()) "" else clean.toLongOrNull(16)?.toString() ?: clean
             } else param.hexBase,
-            textColor = if (hexMismatch) redColor else normColor,
+            textColor = if (hasAnyMismatch) redColor else normColor,
             onValueChange = { vm.updateHexBase(param, it) }
         )
         EditableCell(
@@ -310,7 +313,7 @@ private fun ParameterRow(
                 val clean = param.physBase.replace("x", "").replace("0x", "")
                 if (clean.isEmpty()) "" else clean.toLongOrNull()?.toString() ?: clean
             } else param.physBase,
-            textColor = if (physMismatch) redColor else normColor,
+            textColor = if (hasAnyMismatch) redColor else normColor,
             onValueChange = { vm.updatePhysBase(param, it) }
         )
 
@@ -321,7 +324,7 @@ private fun ParameterRow(
                 val clean = param.hexCtrl.replace("x", "").replace("0x", "")
                 if (clean.isEmpty()) "" else clean.toLongOrNull(16)?.toString() ?: clean
             } else param.hexCtrl,
-            textColor = if (hexMismatch) redColor else normColor,
+            textColor = if (hasAnyMismatch) redColor else normColor,
             onValueChange = { vm.updateHexCtrl(param, it) },
             onEnterPressed = { vm.writeParameterToDevice(param) }
         )
@@ -331,7 +334,7 @@ private fun ParameterRow(
                 val clean = param.physCtrl.replace("x", "").replace("0x", "")
                 if (clean.isEmpty()) "" else clean.toLongOrNull()?.toString() ?: clean
             } else param.physCtrl,
-            textColor = if (physMismatch) redColor else normColor,
+            textColor = if (hasAnyMismatch) redColor else normColor,
             onValueChange = { newValue ->
                 if (param.type == org.example.project.models.ParameterType.TBit) {
                     if (newValue == "0" || newValue == "1" || newValue.isEmpty()) {

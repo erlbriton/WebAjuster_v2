@@ -321,11 +321,8 @@ actual suspend fun pickSingleFile(): DeviceInfoIni? {
         val fileHandle: JsAny = jsShowOpenFilePicker().await<JsAny>()
         val name = getFileName(fileHandle)
 
-        // Передаем имя файла, чтобы правильно декодировать оригинал
         val content = readFileContent(fileHandle, name)
 
-        // Теперь, когда оригинальный .ini прочитан правильно (в windows-1251),
-        // мы сохраняем его копию .txt в ЧИСТОМ Юникоде с уже исправленным русским текстом.
         if (name.lowercase().endsWith(".ini")) {
             println("DEBUG: Обнаружен .ini файл, инициирую копирование в .txt")
             jsSaveFileAsTxt(name, content)
@@ -333,8 +330,8 @@ actual suspend fun pickSingleFile(): DeviceInfoIni? {
 
         val parsedInfo = parseIniContent(content, name)
         parsedInfo
-    } catch (e: Exception) {
-        println("DEBUG: Выбор файла отменен или произошла ошибка: ${e.message}")
+    } catch (e: Throwable) { // <-- ИСПРАВЛЕНО ТУТ (вместо Exception ловим Throwable)
+        println("DEBUG: Выбор файла отменен или произошла JS-ошибка: ${e.message}")
         null
     }
 }
