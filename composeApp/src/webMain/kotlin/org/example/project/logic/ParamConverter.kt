@@ -93,24 +93,22 @@ object ParamConverter {
         val result = mutableMapOf<String, String>()
         if (!scaleName.contains("//")) return result
 
-        // Забираем всё, что строго после "//"
         val itemsRaw = scaleName.substringAfter("//").trim()
-
-        // Разделяем элементы списка по косой черте
         val tokens = itemsRaw.split("/")
+
         for (token in tokens) {
             val cleanToken = token.trim()
 
-            // Нам нужны только те элементы, которые содержат и префикс 'x', и решетку '#'
-            // Это гарантированно отсечет пустые слэши (///) и замыкающий "/x00/"
-            if (cleanToken.isEmpty() || !cleanToken.contains("#") || !cleanToken.startsWith("x")) {
+            // Если токен не содержит решётку или символ 'x' — это пустой слэш или мусор, пропускаем
+            if (cleanToken.isEmpty() || !cleanToken.contains("#") || !cleanToken.contains("x")) {
                 continue
             }
 
-            // Выделяем hex-ключ (все до первой решетки, например "x01")
+            // Извлекаем HEX-ключ: всё, что между началом токена и первой решёткой
+            // Из куска "x01" или "  x01 " получим "x01"
             val hexKey = cleanToken.substringBefore("#").trim().lowercase()
 
-            // Выделяем значимый текст (все, что между первой и второй решеткой)
+            // Извлекаем чистый текст до второй решётки (отсекаем мусор заказчика)
             val remainder = cleanToken.substringAfter("#")
             val textValue = if (remainder.contains("#")) {
                 remainder.substringBefore("#").trim()
@@ -118,8 +116,7 @@ object ParamConverter {
                 remainder.trim()
             }
 
-            // Дополнительная проверка на валидность ключа (например, x01 или x00)
-            if (hexKey.length >= 3 && textValue.isNotEmpty()) {
+            if (hexKey.isNotEmpty() && textValue.isNotEmpty()) {
                 result[hexKey] = textValue
             }
         }

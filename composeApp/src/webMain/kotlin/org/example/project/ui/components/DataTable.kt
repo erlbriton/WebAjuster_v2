@@ -317,29 +317,30 @@ private fun ParameterRow(
 
         // ─── ДОБАВЛЯЕМ ЛОГИКУ ДЛЯ TPRMLIST ───
             // val isPrmList = param.dataType.equals("TPrmList", ignoreCase = true)
-        val isPrmList = param.dataType.trim().equals("TPrmList", ignoreCase = true)
-        val prmMap = if (isPrmList) org.example.project.logic.ParamConverter.parsePrmList(param.scaleName) else emptyMap()
+        // Пытаемся распарсить список. Если в scaleName есть варианты, мы получим заполненную карту
+        val prmMap = org.example.project.logic.ParamConverter.parsePrmList(param.scaleName)
+
+        // Параметр является списком, если карта успешно заполнилась вариантов,
+        // ИЛИ если тип данных явно указан как TPrmList
+        val isPrmList = prmMap.isNotEmpty() || param.dataType.trim().equals("TPrmList", ignoreCase = true)
 
         // Вспомогательная мини-функция для поиска текстового описания по значению (hex или числу)
         val getPrmText: (String) -> String = { rawVal ->
-            // Приводим к чистому текстовому числу (без префиксов)
             val clean = rawVal.replace("x", "").replace("0x", "").trim().lowercase()
             val intVal = clean.toIntOrNull(16) ?: clean.toIntOrNull()
 
             if (intVal != null) {
-                // Выделяем младший байт (актуально для регистров .L, где прилетает xFF00 вместо x00)
+                // Маскируем младший байт (из xFF01 получаем 0x01, из xFF00 получаем 0x00)
                 val lowByte = intVal and 0xFF
 
-                // Ищем ключ в карте, который математически равен lowByte
                 val matchingEntry = prmMap.entries.firstOrNull { (key, _) ->
                     val keyInt = key.replace("x", "").toIntOrNull(16)
                     keyInt == lowByte
                 }
-                // Если нашли совпадение — выводим чистый текст (например, "Iz"), иначе сырое значение
                 matchingEntry?.value ?: rawVal
             } else {
-                // Если это уже чистый текст, выбранный пользователем из списка
-                if (prmMap.values.contains(rawVal)) rawVal else prmMap["x$clean"] ?: rawVal
+                val cleanRaw = rawVal.trim()
+                if (prmMap.values.any { it.equals(cleanRaw, ignoreCase = true) }) cleanRaw else rawVal
             }
         }
 
