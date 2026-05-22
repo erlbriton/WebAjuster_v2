@@ -298,7 +298,8 @@ private fun ParameterRow(
         EditableCell(
             weight = weights[4],
             value = if (isTBit) {
-                param.hexBase.replace("x", "").replace("0x", "").toLongOrNull(16)?.toString() ?: "0"
+                val clean = param.hexBase.replace("x", "").replace("0x", "")
+                if (clean.isEmpty()) "" else clean.toLongOrNull(16)?.toString() ?: clean
             } else param.hexBase,
             textColor = if (hexMismatch) redColor else normColor,
             onValueChange = { vm.updateHexBase(param, it) }
@@ -306,7 +307,8 @@ private fun ParameterRow(
         EditableCell(
             weight = weights[5],
             value = if (isTBit) {
-                param.physBase.replace("x", "").replace("0x", "").toLongOrNull()?.toString() ?: "0"
+                val clean = param.physBase.replace("x", "").replace("0x", "")
+                if (clean.isEmpty()) "" else clean.toLongOrNull()?.toString() ?: clean
             } else param.physBase,
             textColor = if (physMismatch) redColor else normColor,
             onValueChange = { vm.updatePhysBase(param, it) }
@@ -316,7 +318,8 @@ private fun ParameterRow(
         EditableCell(
             weight = weights[6],
             value = if (isTBit) {
-                param.hexCtrl.replace("x", "").replace("0x", "").toLongOrNull(16)?.toString() ?: "0"
+                val clean = param.hexCtrl.replace("x", "").replace("0x", "")
+                if (clean.isEmpty()) "" else clean.toLongOrNull(16)?.toString() ?: clean
             } else param.hexCtrl,
             textColor = if (hexMismatch) redColor else normColor,
             onValueChange = { vm.updateHexCtrl(param, it) },
@@ -325,7 +328,8 @@ private fun ParameterRow(
         EditableCell(
             weight = weights[7],
             value = if (isTBit) {
-                param.physCtrl.replace("x", "").replace("0x", "").toLongOrNull()?.toString() ?: "0"
+                val clean = param.physCtrl.replace("x", "").replace("0x", "")
+                if (clean.isEmpty()) "" else clean.toLongOrNull()?.toString() ?: clean
             } else param.physCtrl,
             textColor = if (physMismatch) redColor else normColor,
             onValueChange = { newValue ->
@@ -338,7 +342,7 @@ private fun ParameterRow(
                 }
             },
             onEnterPressed = { vm.writeParameterToDevice(param) }
-        )
+        )///////////////////////////////////////////////////////////////////////////////////////////
     }
 }
 
