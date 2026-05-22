@@ -279,12 +279,19 @@ private fun ParameterRow(
     val baseHexLong = cleanHexBase.toLongOrNull(16)
     val ctrlHexLong = cleanHexCtrl.toLongOrNull(16)
 
-    // Если оба успешно распарсились как числа — сравниваем их математически, иначе сравниваем очищенные строки
+    val prmMap = org.example.project.logic.ParamConverter.parsePrmList(param.scaleName)
+    val isPrmList = prmMap.isNotEmpty() || param.dataType.trim().equals("TPrmList", ignoreCase = true)
+
     val hexMismatch = if (baseHexLong != null && ctrlHexLong != null) {
-        baseHexLong != ctrlHexLong
+        if (isPrmList) {
+            // Для списков сравниваем только значащие младшие байты
+            (baseHexLong and 0xFF) != (ctrlHexLong and 0xFF)
+        } else {
+            baseHexLong != ctrlHexLong
+        }
     } else {
         cleanHexBase.trim() != cleanHexCtrl.trim()
-    }
+    }//////////////////////////////////////////////////////\
 
     // 2. Безопасное сравнение PHYSICAL
     val cleanPhysBase = param.physBase.replace("x", "").replace("0x", "")
@@ -293,7 +300,10 @@ private fun ParameterRow(
     val basePhysNum = cleanPhysBase.toDoubleOrNull()
     val ctrlPhysNum = cleanPhysCtrl.toDoubleOrNull()
 
-    val physMismatch = if (basePhysNum != null && ctrlPhysNum != null) {
+    val physMismatch = if (isPrmList) {
+        // Для списков разница физических строк не важна, так как мы полностью доверяем сравнению HEX-байта
+        false
+    } else if (basePhysNum != null && ctrlPhysNum != null) {
         basePhysNum != ctrlPhysNum
     } else {
         cleanPhysBase.trim() != cleanPhysCtrl.trim()
@@ -315,16 +325,8 @@ private fun ParameterRow(
 
         val hasAnyMismatch = hexMismatch || physMismatch
 
-        // ─── ДОБАВЛЯЕМ ЛОГИКУ ДЛЯ TPRMLIST ───
-            // val isPrmList = param.dataType.equals("TPrmList", ignoreCase = true)
-        // Пытаемся распарсить список. Если в scaleName есть варианты, мы получим заполненную карту
-        val prmMap = org.example.project.logic.ParamConverter.parsePrmList(param.scaleName)
+        // Переменные prmMap и isPrmList уже объявлены и рассчитаны выше
 
-        // Параметр является списком, если карта успешно заполнилась вариантов,
-        // ИЛИ если тип данных явно указан как TPrmList
-        val isPrmList = prmMap.isNotEmpty() || param.dataType.trim().equals("TPrmList", ignoreCase = true)
-
-        // Вспомогательная мини-функция для поиска текстового описания по значению (hex или числу)
         val getPrmText: (String) -> String = { rawVal ->
             val clean = rawVal.replace("x", "").replace("0x", "").trim().lowercase()
             val intVal = clean.toIntOrNull(16) ?: clean.toIntOrNull()
