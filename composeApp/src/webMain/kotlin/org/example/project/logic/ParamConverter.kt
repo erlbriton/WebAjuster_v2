@@ -20,7 +20,12 @@ object ParamConverter {
         if (rawInt != null) {
             val scaleValue = varsMap[param.scaleName] ?: 1.0
             val calculated = rawInt * scaleValue
-            val finalStr = if (calculated % 1.0 == 0.0) calculated.toInt().toString() else calculated.toString()
+
+            // --- ИСПРАВЛЕНИЕ: Округляем до 5 знаков после запятой, чтобы убрать двоичный хвост ---
+            val rounded = kotlin.math.round(calculated * 100000.0) / 100000.0
+
+            // Если число целое — убираем точку (например, "48.0" -> "48"), иначе выводим как есть
+            val finalStr = if (rounded % 1.0 == 0.0) rounded.toInt().toString() else rounded.toString()
 
             if (isBase) param.physBase = finalStr else param.physCtrl = finalStr
         }
@@ -67,6 +72,7 @@ object ParamConverter {
             param.hexCtrl = hexString
         }
     }
+
     /**
      * Парсит строку TPrmList вида "BPS//x06#115200/x05#57600/"
      * Возвращает карту, где ключ — это HEX (например, "x06"), а значение — текст ("115200")

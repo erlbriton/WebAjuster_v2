@@ -331,10 +331,17 @@ private fun ParameterRow(
             value = if (isTBit) {
                 val clean = param.physBase.replace("x", "").replace("0x", "")
                 if (clean.isEmpty()) "" else clean.toLongOrNull()?.toString() ?: clean
-            } else param.physBase,
+            } else {
+                // Округляем до 5 знаков, если это число
+                val num = param.physBase.replace(",", ".").toDoubleOrNull()
+                if (num != null) {
+                    val rounded = kotlin.math.round(num * 100000.0) / 100000.0
+                    if (rounded % 1.0 == 0.0) rounded.toInt().toString() else rounded.toString()
+                } else param.physBase
+            },
             textColor = if (hasAnyMismatch) redColor else normColor,
             onValueChange = { vm.updatePhysBase(param, it) }
-        )
+        )///////////////////////////////////////////////////////////////////////////////////////////
 
         // 6-й и 7-й столбцы (КОНТРОЛЛЕР)
         EditableCell(
@@ -352,7 +359,14 @@ private fun ParameterRow(
             value = if (isTBit) {
                 val clean = param.physCtrl.replace("x", "").replace("0x", "")
                 if (clean.isEmpty()) "" else clean.toLongOrNull()?.toString() ?: clean
-            } else param.physCtrl,
+            } else {
+                // Округляем до 5 знаков, если это число
+                val num = param.physCtrl.replace(",", ".").toDoubleOrNull()
+                if (num != null) {
+                    val rounded = kotlin.math.round(num * 100000.0) / 100000.0
+                    if (rounded % 1.0 == 0.0) rounded.toInt().toString() else rounded.toString()
+                } else param.physCtrl
+            },
             textColor = if (hasAnyMismatch) redColor else normColor,
             onValueChange = { newValue ->
                 if (param.type == org.example.project.models.ParameterType.TBit) {
