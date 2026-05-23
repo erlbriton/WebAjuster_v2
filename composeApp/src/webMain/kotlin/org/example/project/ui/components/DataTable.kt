@@ -499,13 +499,31 @@ private fun RowScope.EditableCell(
         if (prmList.isNotEmpty()) {
             // Режим Dropdown (Выпадающий список для TPrmList)
             var expanded by remember { mutableStateOf(false) }
+            var itemSelected by remember { mutableStateOf(false) }
 
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { expanded = !expanded }
+                    .clickable {
+                        if (itemSelected) {
+                            itemSelected = false
+                        } else {
+                            expanded = !expanded
+                        }
+                    }
                     .background(Color.Black.copy(alpha = 0.03f))
-                    .padding(vertical = 2.dp),
+                    .padding(vertical = 2.dp)
+                    .onKeyEvent { keyEvent ->
+                        val isEnter = keyEvent.key == Key.Enter ||
+                                keyEvent.key == Key.NumPadEnter
+                        if (isEnter && keyEvent.type == KeyEventType.KeyDown && itemSelected) {
+                            itemSelected = false
+                            onEnterPressed?.invoke()
+                            true
+                        } else {
+                            false
+                        }
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -518,7 +536,6 @@ private fun RowScope.EditableCell(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                // Стандартное всплывающее меню Material3
                 androidx.compose.material3.DropdownMenu(
                     expanded = expanded,
                     onDismissRequest = { expanded = false }
@@ -534,13 +551,13 @@ private fun RowScope.EditableCell(
                             },
                             onClick = {
                                 expanded = false
+                                itemSelected = true  // ставим флаг — ждём Enter
                                 if (isHexColumn) {
-                                    onValueChange(hexKey) // Передаем "x01"
+                                    onValueChange(hexKey)
                                 } else {
-                                    onValueChange(textValue) // Передаем "AIN_DI"
+                                    onValueChange(textValue)
                                 }
-                                // Сразу триггерим отправку данных, если это колонка контроллера
-                                onEnterPressed?.invoke()
+                                // onEnterPressed НЕ вызываем — ждём Enter от пользователя
                             }
                         )
                     }
