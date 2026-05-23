@@ -165,12 +165,17 @@ object ModbusRepository {
                             val ext = if (param.modbusReg.contains("."))
                                 param.modbusReg.substringAfter(".").uppercase() else ""
                             val displayValue = when (ext) {
-                                "H" -> (rawValue shr 8) and 0xFF   // старший байт
-                                "L" -> rawValue and 0xFF            // младший байт
-                                else -> rawValue and 0xFFFF         // обычный 16-битный
+                                "H" -> (rawValue shr 8) and 0xFF
+                                "L" -> rawValue and 0xFF
+                                else -> rawValue and 0xFFFF
                             }
                             val padLen = if (ext == "H" || ext == "L") 2 else 4
                             param.hexCtrl = "x" + displayValue.toString(16).uppercase().padStart(padLen, '0')
+
+// Дополнительный лог только для отладки
+                            if (param.code == "p19802") {
+                                println("DEBUG p19802: rawValue=0x${rawValue.toString(16)} ext=$ext displayValue=0x${displayValue.toString(16)} hexCtrl=${param.hexCtrl}")
+                            }
                         }///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
                         // 1. УМНЫЙ ПОИСК КОЭФФИЦИЕНТА ШКАЛЫ С ОЧИСТКОЙ КЛЮЧЕЙ КАРТЫ
@@ -298,7 +303,19 @@ object ModbusRepository {
             }
 
             val packetWithCrc = WebModbusConverter.appendCRCToHex(rawPacket)
+            println("DEBUG writeSingleParameter: param=${param.code} modbusReg=${param.modbusReg} hexCtrl=${param.hexCtrl} packet=$packetWithCrc")
+
+// Читаем текущий регистр перед записью чтобы увидеть что там лежит
+            if (param.modbusReg.contains(".")) {
+                val address2 = parseModbusRegister(param.modbusReg)
+                if (address2 != null) {
+                    val current = readSingleRegisterDirectlyInternal(address2)
+                    println("DEBUG: Текущее значение регистра ${param.modbusReg} = ${current?.toString(16)}")
+                }
+            }
+
             val writeResult = safeTransceiveAwait(packetWithCrc, 8)
+            println("DEBUG writeSingleParameter: writeResult=$writeResult")
             delay(40)
 
             return@withLock writeResult != null

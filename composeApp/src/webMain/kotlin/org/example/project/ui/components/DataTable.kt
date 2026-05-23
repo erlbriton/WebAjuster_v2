@@ -404,7 +404,7 @@ private fun ParameterRow(
         EditableCell(
             weight = weights[7],
             value = if (isPrmList) {
-                getPrmText(param.physCtrl) // Выводим текст ("AIN_DI") вместо "x01"
+                getPrmText(param.hexCtrl) // Берём текст по hexCtrl — единственный источник истины
             } else if (isTBit) {
                 val clean = param.physCtrl.replace("x", "").replace("0x", "")
                 if (clean.isEmpty()) "" else clean.toLongOrNull()?.toString() ?: clean
@@ -417,7 +417,9 @@ private fun ParameterRow(
             },
             textColor = if (hasAnyMismatch) redColor else normColor,
             onValueChange = { newValue ->
-                if (param.type == org.example.project.models.ParameterType.TBit) {
+                if (isPrmList) {
+                    vm.updateHexCtrl(param, newValue) // Для TPrmList всегда пишем через hex
+                } else if (param.type == org.example.project.models.ParameterType.TBit) {
                     if (newValue == "0" || newValue == "1" || newValue.isEmpty()) {
                         vm.updatePhysCtrl(param, newValue)
                     }
@@ -427,8 +429,8 @@ private fun ParameterRow(
             },
             onEnterPressed = { vm.writeParameterToDevice(param) },
             prmList = prmMap,
-            isHexColumn = false
-        )///////////////////////////////////////////////////////////////////////////////////////////
+            isHexColumn = true // ← для TPrmList всегда передаём hexKey
+        )//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     }
 }
 
