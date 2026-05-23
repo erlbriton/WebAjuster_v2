@@ -65,7 +65,8 @@ object ModbusRepository {
                 regToParamsMap.getOrPut(regAddress) { mutableListOf() }.add(param)
 
                 // ЖЕЛЕЗНО ВКЛЮЧАЕМ ВТОРОЙ РЕГИСТР В СПИСОК ОПРОСА ДЛЯ 32-БИТНЫХ ТИПОВ
-                if (param.dataType.equals("TFloat", ignoreCase = true)) {
+                if (param.dataType.equals("TFloat",  ignoreCase = true) ||
+                    param.dataType.equals("TIPAddr", ignoreCase = true)) {
                     regToParamsMap.getOrPut(regAddress + 1) { mutableListOf() }
                 }
             }
@@ -138,18 +139,16 @@ object ModbusRepository {
 
                     // 3. ОБРАБАТЫВАЕМ КАЖДЫЙ ПАРАМЕТР РОВНО ОДИН РАЗ
                     paramsInThisChunk.forEach { param ->
-                        val isTFloat = param.dataType.equals("TFloat", ignoreCase = true)
+                        val isTFloat  = param.dataType.equals("TFloat",  ignoreCase = true)
+                        val isTIPAddr = param.dataType.equals("TIPAddr", ignoreCase = true)
                         val baseAddress = parseModbusRegister(param.modbusReg)!!
 
-                        // Читаем из карты ровно столько, сколько требует тип
-                        val rawValue: Long = if (isTFloat) {
-                            val r1 = addressToValueMap[baseAddress] ?: 0       // Младшее слово (Low Word)
-                            val r2 = addressToValueMap[baseAddress + 1] ?: 0   // Старшее слово (High Word)
-
-                            // Склеиваем 32-битное число ((r2 << 16) | r1)
+                        val rawValue: Long = if (isTFloat || isTIPAddr) {
+                            val r1 = addressToValueMap[baseAddress] ?: 0
+                            val r2 = addressToValueMap[baseAddress + 1] ?: 0
                             ((r2 and 0xFFFF).toLong() shl 16) or (r1 and 0xFFFF).toLong()
                         } else {
-                            (addressToValueMap[baseAddress] ?: 0).toLong()     // Обычные 16-битные
+                            (addressToValueMap[baseAddress] ?: 0).toLong()
                         }
 
                         // Записываем HEX (8 символов для TFloat, 4 символа для 16-бит, без префикса 'x')
@@ -158,7 +157,7 @@ object ModbusRepository {
                             val bitValue = (rawValue shr bitNum) and 1
                             param.hexCtrl = bitValue.toString() // Теперь "0" или "1"
                             param.physCtrl = bitValue.toString() // И в Physical тоже "0" или "1"
-                        } else if (isTFloat) {
+                        } else if (isTFloat || isTIPAddr) {
                             param.hexCtrl = "x" + rawValue.toString(16).uppercase().padStart(8, '0')
                         } else {
                             // Для байтовых регистров (.L и .H) — вырезаем только нужный байт
@@ -258,13 +257,14 @@ object ModbusRepository {
     suspend fun writeSingleParameter(param: ParameterData, varsMap: Map<String, Double>): Boolean {
         return modbusMutex.withLock {
             val address = parseModbusRegister(param.modbusReg) ?: return@withLock false
-            val isTFloat = param.dataType.equals("TFloat", ignoreCase = true)
+            val isTFloat  = param.dataType.equals("TFloat",  ignoreCase = true)
+            val isTIPAddr = param.dataType.equals("TIPAddr", ignoreCase = true)
             val hasExtension = param.modbusReg.contains(".")
 
             // Убираем всё, кроме цифр и букв A-F
             val currentHexInCell = param.hexCtrl.filter { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }
 
-            val rawPacket = if (isTFloat) {
+            val rawPacket = if (isTFloat || isTIPAddr) {
                 // ЗАПИСЬ 32-БИТНОГО ПАРАМЕТРА (TFloat)
                 val raw32BitValue = currentHexInCell.toLongOrNull(16) ?: 0L
 

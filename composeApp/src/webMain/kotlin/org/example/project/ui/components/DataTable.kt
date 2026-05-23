@@ -256,6 +256,15 @@ private fun HeaderSection(
 // Строка параметра
 // ─────────────────────────────────────────────────────────────────────────────
 
+
+// Вспомогательная функция
+val hexToIp: (String) -> String = { rawVal ->
+    val clean = rawVal.replace("x", "").replace("0x", "").trim().lowercase()
+    val intVal = clean.toLongOrNull(16)
+    if (intVal != null) {
+        "${(intVal shr 24) and 0xFF}.${(intVal shr 16) and 0xFF}.${(intVal shr 8) and 0xFF}.${intVal and 0xFF}"
+    } else rawVal
+}
 @Composable // Убедитесь, что над функцией стоит @Composable
 private fun ParameterRow(
     param: ParameterData,
@@ -365,17 +374,24 @@ private fun ParameterRow(
         // 5-й столбец (БАЗА Physical)
         EditableCell(
             weight = weights[5],
-            value = if (isPrmList) {
-                getPrmText(param.physBase) // Выводим текст ("AIN_DI") вместо "x01"
-            } else if (isTBit) {
-                val clean = param.physBase.replace("x", "").replace("0x", "")
-                if (clean.isEmpty()) "" else clean.toLongOrNull()?.toString() ?: clean
-            } else {
-                val num = param.physBase.replace(",", ".").toDoubleOrNull()
-                if (num != null) {
-                    val rounded = kotlin.math.round(num * 100000.0) / 100000.0
-                    if (rounded % 1.0 == 0.0) rounded.toInt().toString() else rounded.toString()
-                } else param.physBase
+            value = when {
+                isPrmList -> getPrmText(param.physBase)
+                param.dataType.trim().equals("TIPAddr", ignoreCase = true) -> {
+                    val clean = param.hexBase.replace("x", "").replace("0x", "").trim().lowercase()
+                    val intVal = clean.toLongOrNull(16)
+                    if (intVal != null) "${(intVal shr 24) and 0xFF}.${(intVal shr 16) and 0xFF}.${(intVal shr 8) and 0xFF}.${intVal and 0xFF}" else param.physBase
+                }
+                isTBit -> {
+                    val clean = param.physBase.replace("x", "").replace("0x", "")
+                    if (clean.isEmpty()) "" else clean.toLongOrNull()?.toString() ?: clean
+                }
+                else -> {
+                    val num = param.physBase.replace(",", ".").toDoubleOrNull()
+                    if (num != null) {
+                        val rounded = kotlin.math.round(num * 100000.0) / 100000.0
+                        if (rounded % 1.0 == 0.0) rounded.toInt().toString() else rounded.toString()
+                    } else param.physBase
+                }
             },
             textColor = if (hasAnyMismatch) redColor else normColor,
             onValueChange = { vm.updatePhysBase(param, it) },
@@ -403,22 +419,29 @@ private fun ParameterRow(
         // 7-й столбец (КОНТРОЛЛЕР Physical)
         EditableCell(
             weight = weights[7],
-            value = if (isPrmList) {
-                getPrmText(param.hexCtrl) // Берём текст по hexCtrl — единственный источник истины
-            } else if (isTBit) {
-                val clean = param.physCtrl.replace("x", "").replace("0x", "")
-                if (clean.isEmpty()) "" else clean.toLongOrNull()?.toString() ?: clean
-            } else {
-                val num = param.physCtrl.replace(",", ".").toDoubleOrNull()
-                if (num != null) {
-                    val rounded = kotlin.math.round(num * 100000.0) / 100000.0
-                    if (rounded % 1.0 == 0.0) rounded.toInt().toString() else rounded.toString()
-                } else param.physCtrl
+            value = when {
+                isPrmList -> getPrmText(param.hexCtrl)
+                param.dataType.trim().equals("TIPAddr", ignoreCase = true) -> {
+                    val clean = param.hexCtrl.replace("x", "").replace("0x", "").trim().lowercase()
+                    val intVal = clean.toLongOrNull(16)
+                    if (intVal != null) "${(intVal shr 24) and 0xFF}.${(intVal shr 16) and 0xFF}.${(intVal shr 8) and 0xFF}.${intVal and 0xFF}" else param.physCtrl
+                }
+                isTBit -> {
+                    val clean = param.physCtrl.replace("x", "").replace("0x", "")
+                    if (clean.isEmpty()) "" else clean.toLongOrNull()?.toString() ?: clean
+                }
+                else -> {
+                    val num = param.physCtrl.replace(",", ".").toDoubleOrNull()
+                    if (num != null) {
+                        val rounded = kotlin.math.round(num * 100000.0) / 100000.0
+                        if (rounded % 1.0 == 0.0) rounded.toInt().toString() else rounded.toString()
+                    } else param.physCtrl
+                }
             },
             textColor = if (hasAnyMismatch) redColor else normColor,
             onValueChange = { newValue ->
                 if (isPrmList) {
-                    vm.updateHexCtrl(param, newValue) // Для TPrmList всегда пишем через hex
+                    vm.updateHexCtrl(param, newValue)
                 } else if (param.type == org.example.project.models.ParameterType.TBit) {
                     if (newValue == "0" || newValue == "1" || newValue.isEmpty()) {
                         vm.updatePhysCtrl(param, newValue)
@@ -429,7 +452,7 @@ private fun ParameterRow(
             },
             onEnterPressed = { vm.writeParameterToDevice(param) },
             prmList = prmMap,
-            isHexColumn = true // ← для TPrmList всегда передаём hexKey
+            isHexColumn = true
         )//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     }
 }

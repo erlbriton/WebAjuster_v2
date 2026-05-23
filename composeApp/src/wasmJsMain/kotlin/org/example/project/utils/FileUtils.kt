@@ -158,9 +158,13 @@ private fun parseIniContent(content: String, fileName: String): DeviceInfoIni? {
 
                     if (parts.size >= 2) {
                         val fileHex = if (parts.last().isEmpty()) parts[parts.size - 2].trim() else parts.last().trim()
-                        val rawInt = fileHex.removePrefix("x").toIntOrNull(16) ?: 0
-                        val hexString = rawInt.toString(16).uppercase()
-                        val hexRaw = "x" + hexString.padStart(4, '0')
+                        val rawInt = fileHex.removePrefix("x").toLongOrNull(16) ?: 0L
+                        val isIPAddr = (parts.getOrNull(2) ?: "").trim().equals("TIPAddr", ignoreCase = true)
+                        val hexRaw = if (isIPAddr) {
+                            "x" + rawInt.toString(16).uppercase().padStart(8, '0')
+                        } else {
+                            "x" + (rawInt and 0xFFFF).toString(16).uppercase().padStart(4, '0')
+                        }
 
                         // Определяем, дискретный ли это сигнал (TBit)
                         val dataType = parts.getOrNull(2) ?: ""
@@ -206,7 +210,8 @@ private fun parseIniContent(content: String, fileName: String): DeviceInfoIni? {
 
                         val calculated = when {
                             dataType.equals("TFloat", ignoreCase = true) -> {
-                                Float.fromBits(rawInt).toDouble() * scaleValue
+                                // Приводим Long к Int, так как Float.fromBits ожидает Int
+                                Float.fromBits(rawInt.toInt()).toDouble() * scaleValue
                             }
                             // Знаковые 16-битные типы (например, TInt, TShort, TSign)
                             dataType.equals("TInt", ignoreCase = true) ||
@@ -223,10 +228,14 @@ private fun parseIniContent(content: String, fileName: String): DeviceInfoIni? {
                             }
                             // Беззнаковые типы (TWord, TByte и остальные)
                             else -> {
-                                // Маскируем под 16 бит для TWord, чтобы не вылез мусор
-                                val cleanInt = if (dataType.equals("TWord", ignoreCase = true)) rawInt and 0xFFFF else rawInt
-                                cleanInt * scaleValue
-                            }
+                                // Явно приводим к Double, чтобы убрать неоднозначность типов в WASM
+                                val cleanVal = if (dataType.equals("TWord", ignoreCase = true)) {
+                                    (rawInt and 0xFFFF).toDouble()
+                                } else {
+                                    rawInt.toDouble()
+                                }
+                                cleanVal * scaleValue
+                            }/////////////////////////////////////////////////////////////////////\
                         }
                         // Умное округление: если тип TFloat, округляем до 4 знаков после запятой, чтобы убрать мусор IEEE 754
                         val roundedCalculated = if (dataType.equals("TFloat", ignoreCase = true)) {
