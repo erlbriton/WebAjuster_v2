@@ -161,8 +161,17 @@ object ModbusRepository {
                         } else if (isTFloat) {
                             param.hexCtrl = "x" + rawValue.toString(16).uppercase().padStart(8, '0')
                         } else {
-                            param.hexCtrl = "x" + (rawValue and 0xFFFF).toString(16).uppercase().padStart(4, '0')
-                        }
+                            // Для байтовых регистров (.L и .H) — вырезаем только нужный байт
+                            val ext = if (param.modbusReg.contains("."))
+                                param.modbusReg.substringAfter(".").uppercase() else ""
+                            val displayValue = when (ext) {
+                                "H" -> (rawValue shr 8) and 0xFF   // старший байт
+                                "L" -> rawValue and 0xFF            // младший байт
+                                else -> rawValue and 0xFFFF         // обычный 16-битный
+                            }
+                            val padLen = if (ext == "H" || ext == "L") 2 else 4
+                            param.hexCtrl = "x" + displayValue.toString(16).uppercase().padStart(padLen, '0')
+                        }///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
                         // 1. УМНЫЙ ПОИСК КОЭФФИЦИЕНТА ШКАЛЫ С ОЧИСТКОЙ КЛЮЧЕЙ КАРТЫ
                         val cleanScaleName = param.scaleName.trim()
@@ -191,10 +200,16 @@ object ModbusRepository {
                             val rawCalculated = floatVal * scaleValue
                             kotlin.math.round(rawCalculated * 10000.0) / 10000.0
                         } else {
-                            // Ветка для ВСЕХ ОСТАЛЬНЫХ ТИПОВ (включая TWORD p19100)
-                            // Берем сырое значение (16) и умножаем на scaleValue (0.1) -> получим 1.6
-                            (rawValue and 0xFFFF) * scaleValue
-                        }
+                            // Для байтовых регистров — берём только свой байт
+                            val ext = if (param.modbusReg.contains("."))
+                                param.modbusReg.substringAfter(".").uppercase() else ""
+                            val byteValue = when (ext) {
+                                "H" -> (rawValue shr 8) and 0xFF
+                                "L" -> rawValue and 0xFF
+                                else -> rawValue and 0xFFFF
+                            }
+                            byteValue * scaleValue
+                        }/////////////////////////////////////////////
 
 // 3. ВЫВОД НА ЭКРАН (физическое значение контроллера с поддержкой TPrmList)
                         if (param.dataType.equals("TPrmList", ignoreCase = true)) {

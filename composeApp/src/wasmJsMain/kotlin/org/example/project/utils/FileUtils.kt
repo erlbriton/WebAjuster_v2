@@ -4,11 +4,9 @@
 
 package org.example.project.utils
 
-import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
+
 import org.example.project.models.DeviceInfoIni
 import org.example.project.models.ParameterData
-import kotlinx.browser.window
 import kotlin.js.Promise
 import kotlinx.coroutines.await
 
