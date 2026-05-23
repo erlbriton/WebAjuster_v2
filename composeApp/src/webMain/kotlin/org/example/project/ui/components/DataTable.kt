@@ -269,19 +269,28 @@ val hexToIp: (String) -> String = { rawVal ->
 private fun ParameterRow(
     param: ParameterData,
     weights: List<Float>,
-    modifier: Modifier = Modifier, // 1. Добавили параметр
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     val vm = LocalMainViewModel.current
-    // Очищаем hexBase от "x" и лишних нулей (парсим как hex),
-    // а hexCtrl парсим как обычное целое (так как там теперь 0 или 1)
+
+    // ОПРЕДЕЛЕНИЕ ipToHex ДОБАВЛЕНО СЮДА
+    val ipToHex: (String) -> String = { ip ->
+        val parts = ip.split(".")
+        if (parts.size == 4) {
+            val b = parts.map { it.toLongOrNull() ?: 0L }
+            val hex = (b[0] shl 24) or (b[1] shl 16) or (b[2] shl 8) or b[3]
+            "x" + hex.toString(16).padStart(8, '0').uppercase()
+        } else ip
+    }
+
     val baseVal = param.hexBase.replace("x", "").toLongOrNull(16) ?: 0L
     val ctrlVal = param.hexCtrl.toLongOrNull() ?: 0L
 
-    // 1. Сравниваем HEX: убираем 'x', приводим к числу (Long), если там просто 0/1 — тоже сработает
     val isTBit = param.dataType.equals("TBit", ignoreCase = true)
+    // Более гибкая проверка: если в типе данных есть "IP", считаем это IP-адресом
+    val isIpAddr = param.dataType.contains("IP", ignoreCase = true)
 
-    // 1. Безопасное сравнение HEX (с предварительной очисткой от префиксов)
     val cleanHexBase = param.hexBase.replace("x", "").replace("0x", "")
     val cleanHexCtrl = param.hexCtrl.replace("x", "").replace("0x", "")
 
@@ -293,16 +302,14 @@ private fun ParameterRow(
 
     val hexMismatch = if (baseHexLong != null && ctrlHexLong != null) {
         if (isPrmList) {
-            // Для списков сравниваем только значащие младшие байты
             (baseHexLong and 0xFF) != (ctrlHexLong and 0xFF)
         } else {
             baseHexLong != ctrlHexLong
         }
     } else {
         cleanHexBase.trim() != cleanHexCtrl.trim()
-    }//////////////////////////////////////////////////////\
+    }
 
-    // 2. Безопасное сравнение PHYSICAL
     val cleanPhysBase = param.physBase.replace("x", "").replace("0x", "")
     val cleanPhysCtrl = param.physCtrl.replace("x", "").replace("0x", "")
 
@@ -310,7 +317,6 @@ private fun ParameterRow(
     val ctrlPhysNum = cleanPhysCtrl.toDoubleOrNull()
 
     val physMismatch = if (isPrmList) {
-        // Для списков разница физических строк не важна, так как мы полностью доверяем сравнению HEX-байта
         false
     } else if (basePhysNum != null && ctrlPhysNum != null) {
         basePhysNum != ctrlPhysNum
@@ -319,7 +325,7 @@ private fun ParameterRow(
     }
 
     Row(
-        modifier = modifier // 2. Применяем его ПЕРВЫМ (он принесет цвет фона из LazyColumn)
+        modifier = modifier
             .fillMaxWidth()
             .height(24.dp)
             .clickable { onClick() }
@@ -334,16 +340,12 @@ private fun ParameterRow(
 
         val hasAnyMismatch = hexMismatch || physMismatch
 
-        // Переменные prmMap и isPrmList уже объявлены и рассчитаны выше
-
         val getPrmText: (String) -> String = { rawVal ->
             val clean = rawVal.replace("x", "").replace("0x", "").trim().lowercase()
             val intVal = clean.toIntOrNull(16) ?: clean.toIntOrNull()
 
             if (intVal != null) {
-                // Маскируем младший байт (из xFF01 получаем 0x01, из xFF00 получаем 0x00)
                 val lowByte = intVal and 0xFF
-
                 val matchingEntry = prmMap.entries.firstOrNull { (key, _) ->
                     val keyInt = key.replace("x", "").toIntOrNull(16)
                     keyInt == lowByte
@@ -354,15 +356,13 @@ private fun ParameterRow(
                 if (prmMap.values.any { it.equals(cleanRaw, ignoreCase = true) }) cleanRaw else rawVal
             }
         }
-
-        // 4-й столбец (БАЗА hex)
+//Четвертый столбец
         EditableCell(
             weight = weights[4],
             value = if (isTBit) {
                 val clean = param.hexBase.replace("x", "").replace("0x", "")
                 if (clean.isEmpty()) "" else clean.toLongOrNull(16)?.toString() ?: clean
             } else if (isPrmList) {
-                // Приводим hex базы к чистому виду (из x0000 берем младший байт и выводим как x00)
                 val clean = param.hexBase.replace("x", "").replace("0x", "").trim()
                 val intVal = clean.toIntOrNull(16) ?: clean.toIntOrNull()
                 if (intVal != null) "x" + (intVal and 0xFF).toString(16).padStart(2, '0').lowercase() else param.hexBase
@@ -370,90 +370,97 @@ private fun ParameterRow(
             textColor = if (hasAnyMismatch) redColor else normColor,
             onValueChange = { vm.updateHexBase(param, it) }
         )
+// 5-й столбец (БАЗА Physical)
+// Создаем буфер, который сбрасывается только если пришло новое значение из устройства (hexBase)
+        var ipBaseBuffer by remember(param.hexBase) { mutableStateOf(hexToIp(param.hexBase)) }
 
-        // 5-й столбец (БАЗА Physical)
         EditableCell(
             weight = weights[5],
-            value = when {
-                isPrmList -> getPrmText(param.physBase)
-                param.dataType.trim().equals("TIPAddr", ignoreCase = true) -> {
-                    val clean = param.hexBase.replace("x", "").replace("0x", "").trim().lowercase()
-                    val intVal = clean.toLongOrNull(16)
-                    if (intVal != null) "${(intVal shr 24) and 0xFF}.${(intVal shr 16) and 0xFF}.${(intVal shr 8) and 0xFF}.${intVal and 0xFF}" else param.physBase
-                }
-                isTBit -> {
-                    val clean = param.physBase.replace("x", "").replace("0x", "")
-                    if (clean.isEmpty()) "" else clean.toLongOrNull()?.toString() ?: clean
-                }
-                else -> {
-                    val num = param.physBase.replace(",", ".").toDoubleOrNull()
-                    if (num != null) {
-                        val rounded = kotlin.math.round(num * 100000.0) / 100000.0
-                        if (rounded % 1.0 == 0.0) rounded.toInt().toString() else rounded.toString()
-                    } else param.physBase
-                }
+            value = if (isIpAddr) ipBaseBuffer else {
+                // Логика для обычных чисел остается прежней
+                val num = param.physBase.replace(",", ".").toDoubleOrNull()
+                if (num != null) {
+                    val rounded = kotlin.math.round(num * 100000.0) / 100000.0
+                    if (rounded % 1.0 == 0.0) rounded.toInt().toString() else rounded.toString()
+                } else param.physBase
             },
             textColor = if (hasAnyMismatch) redColor else normColor,
-            onValueChange = { vm.updatePhysBase(param, it) },
+            onValueChange = { newValue ->
+                if (isIpAddr) {
+                    ipBaseBuffer = newValue // Обновляем экран мгновенно
+                    // Отправляем в VM только валидный IP или по завершении ввода
+                    // Если IP введен полностью (есть 3 точки), обновляем ViewModel
+                    if (newValue.count { it == '.' } == 3) {
+                        vm.updateHexBase(param, ipToHex(newValue))
+                    }
+                } else {
+                    vm.updatePhysBase(param, newValue)
+                }
+            },
             prmList = prmMap,
             isHexColumn = false
         )
-
-        // 6-й столбец (КОНТРОЛЛЕР hex)
+//Шестой столбец
         EditableCell(
             weight = weights[6],
-            value = if (isTBit) {
-                val clean = param.hexCtrl.replace("x", "").replace("0x", "")
-                if (clean.isEmpty()) "" else clean.toLongOrNull(16)?.toString() ?: clean
-            } else if (isPrmList) {
-                // Приводим hex контроллера к чистому виду (например, из x0101 или численного 257 берем только младший байт x01)
-                val clean = param.hexCtrl.replace("x", "").replace("0x", "").trim()
-                val intVal = clean.toIntOrNull(16) ?: clean.toIntOrNull()
-                if (intVal != null) "x" + (intVal and 0xFF).toString(16).padStart(2, '0').uppercase() else param.hexCtrl
-            } else param.hexCtrl,
-            textColor = if (hasAnyMismatch) redColor else normColor,
-            onValueChange = { vm.updateHexCtrl(param, it) },
-            onEnterPressed = { vm.writeParameterToDevice(param) }
+            value = param.unit,
+            textColor = normColor,
+            onValueChange = { },
+            prmList = prmMap,
+            isHexColumn = false
         )
+// 7-й столбец (КОНТРОЛЛЕР)
+        // 1. Создаем локальный буфер для IP (сбрасывается только если данные в param.hexCtrl придут извне)
+        var ipCtrlBuffer by remember(param.hexCtrl) { mutableStateOf(hexToIp(param.hexCtrl)) }
 
-        // 7-й столбец (КОНТРОЛЛЕР Physical)
         EditableCell(
             weight = weights[7],
-            value = when {
-                isPrmList -> getPrmText(param.hexCtrl)
-                param.dataType.trim().equals("TIPAddr", ignoreCase = true) -> {
-                    val clean = param.hexCtrl.replace("x", "").replace("0x", "").trim().lowercase()
-                    val intVal = clean.toLongOrNull(16)
-                    if (intVal != null) "${(intVal shr 24) and 0xFF}.${(intVal shr 16) and 0xFF}.${(intVal shr 8) and 0xFF}.${intVal and 0xFF}" else param.physCtrl
-                }
-                isTBit -> {
-                    val clean = param.physCtrl.replace("x", "").replace("0x", "")
-                    if (clean.isEmpty()) "" else clean.toLongOrNull()?.toString() ?: clean
-                }
-                else -> {
-                    val num = param.physCtrl.replace(",", ".").toDoubleOrNull()
-                    if (num != null) {
-                        val rounded = kotlin.math.round(num * 100000.0) / 100000.0
-                        if (rounded % 1.0 == 0.0) rounded.toInt().toString() else rounded.toString()
-                    } else param.physCtrl
+            value = if (isIpAddr) {
+                ipCtrlBuffer // Берем значение из буфера
+            } else {
+                // Логика отображения для не-IP параметров
+                when {
+                    isPrmList -> getPrmText(param.hexCtrl)
+                    isTBit -> {
+                        val clean = param.physCtrl.replace("x", "").replace("0x", "")
+                        if (clean.isEmpty()) "" else clean.toLongOrNull()?.toString() ?: clean
+                    }
+                    else -> {
+                        val num = param.physCtrl.replace(",", ".").toDoubleOrNull()
+                        if (num != null) {
+                            val rounded = kotlin.math.round(num * 100000.0) / 100000.0
+                            if (rounded % 1.0 == 0.0) rounded.toInt().toString() else rounded.toString()
+                        } else param.physCtrl
+                    }
                 }
             },
             textColor = if (hasAnyMismatch) redColor else normColor,
             onValueChange = { newValue ->
-                if (isPrmList) {
-                    vm.updateHexCtrl(param, newValue)
-                } else if (param.type == org.example.project.models.ParameterType.TBit) {
-                    if (newValue == "0" || newValue == "1" || newValue.isEmpty()) {
-                        vm.updatePhysCtrl(param, newValue)
+                if (isIpAddr) {
+                    ipCtrlBuffer = newValue // Мгновенное обновление UI без тормозов
+
+                    // Отправляем в VM только когда введено 3 точки (похоже на законченный IP)
+                    // Это предотвращает отправку "недоделанных" значений в ViewModel
+                    if (newValue.count { it == '.' } == 3) {
+                        vm.updateHexCtrl(param, ipToHex(newValue))
                     }
                 } else {
-                    vm.updatePhysCtrl(param, newValue)
+                    // Исходная логика обновления для обычных параметров
+                    when {
+                        isPrmList -> vm.updateHexCtrl(param, newValue)
+                        param.type == org.example.project.models.ParameterType.TBit -> {
+                            if (newValue == "0" || newValue == "1" || newValue.isEmpty()) {
+                                vm.updatePhysCtrl(param, newValue)
+                            }
+                        }
+                        else -> vm.updatePhysCtrl(param, newValue)
+                    }
                 }
             },
             onEnterPressed = { vm.writeParameterToDevice(param) },
             prmList = prmMap,
             isHexColumn = true
-        )//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        )
     }
 }
 
