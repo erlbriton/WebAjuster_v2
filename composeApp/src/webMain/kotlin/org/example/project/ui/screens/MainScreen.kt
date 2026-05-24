@@ -2,6 +2,7 @@
 
 package org.example.project.ui.screens
 
+import org.example.project.oscilloscope.OscilloscopeWindow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
@@ -16,7 +17,6 @@ import org.example.project.viewmodels.MainViewModel
 import org.example.project.viewmodels.LocalMainViewModel
 import org.example.project.logic.HeaderActionsButtons
 import org.example.project.components.HeaderTable
-import org.example.project.models.DeviceInfoIni
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
@@ -31,7 +31,7 @@ fun MainScreen() {
 
     // Начальное смещение для левого сплиттера, чтобы таблица была 0.4 от окна
     // Мы вычислим это через weight, чтобы не гадать с пикселями
-    var leftWeight by remember { mutableStateOf(0.6f) }
+    var leftWeight by remember { mutableStateOf(0.5f) }
 
     var errorMessage by remember { mutableStateOf("") }
     var showErrorDialog by remember { mutableStateOf(false) }
@@ -79,12 +79,21 @@ fun MainScreen() {
         ) {
 
             // ЛЕВАЯ ЧАСТЬ: Пустота (0.6 от экрана по умолчанию)
-            Box(
-                modifier = Modifier
-                    .weight(leftWeight)
-                    .fillMaxHeight()
-                    .background(Color.White)
-            )
+            if (viewModel.oscilloscopeState.isWindowOpen) {
+                OscilloscopeWindow(
+                    state = viewModel.oscilloscopeState,
+                    modifier = Modifier
+                        .weight(leftWeight)
+                        .fillMaxHeight()
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .weight(leftWeight)
+                        .fillMaxHeight()
+                        .background(Color.White)
+                )
+            }
 
             // ЛЕВЫЙ СПЛИТТЕР (Граница всей таблицы)
             Box(
@@ -98,7 +107,7 @@ fun MainScreen() {
                             if (screenWidth > 0) {
                                 // Пересчитываем weight в зависимости от движения мыши
                                 val deltaWeight = dragAmount.x / screenWidth
-                                leftWeight = (leftWeight + deltaWeight).coerceIn(0.1f, 0.6f)
+                                leftWeight = (leftWeight + deltaWeight).coerceIn(0.1f, 0.5f)
                             }
                         }
                     }

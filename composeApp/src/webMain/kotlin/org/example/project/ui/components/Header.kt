@@ -4,6 +4,7 @@
 
 package org.example.project.components
 
+import org.example.project.oscilloscope.OscilloscopeState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -193,7 +194,9 @@ fun HeaderTable(
                             modifier = Modifier
                                 .fillMaxHeight()
                                 .clickable {
-                                    println("Выполнено: ${oscilligraphItems[0]}")
+                                    // Переключаем состояние окна (открыто/закрыто)
+                                    vm.oscilloscopeState.isWindowOpen = !vm.oscilloscopeState.isWindowOpen
+                                    println("Осциллограф открыт: ${vm.oscilloscopeState.isWindowOpen}")
                                 }
                                 .padding(horizontal = 4.dp),
                             contentAlignment = Alignment.Center

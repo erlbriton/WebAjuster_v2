@@ -9,8 +9,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import org.example.project.logic.ModbusRepository
 import org.example.project.logic.ParamConverter
+import org.example.project.oscilloscope.OscilloscopeState
 
 class MainViewModel {
+    val oscilloscopeState = OscilloscopeState()
     var currentVarsMap = mapOf<String, Double>()
     var typeMechanism        by mutableStateOf("Не указан")
     var dateSet              by mutableStateOf("29.01.1964")
