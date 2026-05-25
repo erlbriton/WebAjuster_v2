@@ -390,7 +390,6 @@ fun HeaderTable(
                             label = "Папка",
                             itemHeight = 16.dp,
                             onClick = {
-                                println("DEBUG: Клик по пункту Папка сработал!")
                                 selectFile = false
                                 actions.onPickDirectoryRequest()
                             }

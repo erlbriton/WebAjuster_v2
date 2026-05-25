@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 
 @Composable
 fun OscilloscopeWindow(
@@ -22,8 +23,21 @@ fun OscilloscopeWindow(
 
     // ЕДИНЫЙ ЛОКАЛЬНЫЙ МАССИВ ИЗ 5 ВЕСОВ:
     // Индексы 0, 1, 2, 3 — колонки таблицы параметров RAM (name, hex, physical, unit)
-    // Индекс 4 — колонка для окна осциллограммы
+    // Индекс 4 — колонка для графиков-самописцев
     val localWeights = remember { mutableStateListOf(0.20f, 0.10f, 0.15f, 0.10f, 0.45f) }
+
+    // Запускаем единый Modbus-таймер опроса для всего окна осциллографа
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(200)
+            val device = vm.currentDeviceState.value
+            if (device != null) {
+                org.example.project.logic.ModbusRepository.performModbusOpros(device, vm.currentVarsMap) { portName ->
+                    vm.setConnectedPort(portName)
+                }
+            }
+        }
+    }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(Color(0xFFEFEFEF))) {
         val totalWidthPx = constraints.maxWidth.toFloat()
@@ -42,7 +56,7 @@ fun OscilloscopeWindow(
                 )
             }
 
-            // 2. Интерактивная шапка таблицы колонок (задает общую сетку для всего экрана)
+            // 2. Интерактивная шапка таблицы колонок (задает общую сетку для всего экрана, включая Graph)
             OscilloscopeHeaderColumns(
                 weights = localWeights,
                 totalWidthPx = totalWidthPx,
@@ -55,7 +69,6 @@ fun OscilloscopeWindow(
                         val oldWeightCurrent = localWeights[index]
                         val oldWeightNext = localWeights[nextIndex]
 
-                        // Меняем пропорции соседних колонок, обеспечивая минимальную ширину в 5%
                         val newWeightCurrent = (oldWeightCurrent + deltaWeight).coerceAtLeast(0.05f)
                         val actualDelta = newWeightCurrent - oldWeightCurrent
                         val newWeightNext = (oldWeightNext - actualDelta).coerceAtLeast(0.05f)
@@ -66,8 +79,7 @@ fun OscilloscopeWindow(
                 }
             )
 
-            // 3. Основная рабочая область (Скроллируемый контейнер)
-            // Мы избавляемся от деления на левый и правый блоки, делая прокрутку только для данных таблицы.
+            // 3. Основная рабочая область (Единый скроллируемый контейнер таблицы и графиков)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -77,7 +89,6 @@ fun OscilloscopeWindow(
                 val device = vm.currentDeviceState.value
 
                 if (device != null) {
-                    // Вертикальный список строк параметров
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -86,14 +97,14 @@ fun OscilloscopeWindow(
                         device.ramParameters.forEach { param ->
                             val isSelected = (vm.selectedCode == param.code)
 
-                            // Каждая строка — это Row на всю ширину экрана, где первые 4 ячейки — текст,
-                            // а вместо 5-й ячейки — пустое место (Spacer), чтобы не перекрывать график!
+                            // Мы передаем веса и флаг выбора.
+                            // Внутри OscilloscopeRow теперь встроен Canvas для 5-й колонки!
                             OscilloscopeRow(
                                 name = param.idName,
                                 hex = param.hexBase,
                                 physical = param.physBase,
                                 unit = param.unit,
-                                weights = localWeights, // Строка идеально выравнивается по тем же 5 весам
+                                weights = localWeights,
                                 isSelected = isSelected,
                                 onRowClick = {
                                     vm.selectRow(param.code)
@@ -102,30 +113,12 @@ fun OscilloscopeWindow(
                         }
                     }
                 } else {
-                    // Заглушка, если прибор не выбран (занимает только область таблицы, не заходя на график)
-                    Row(modifier = Modifier.fillMaxSize()) {
-                        Box(
-                            modifier = Modifier
-                                .weight(localWeights[0] + localWeights[1] + localWeights[2] + localWeights[3])
-                                .fillMaxHeight()
-                                .padding(16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(text = "Прибор не выбран. Загрузите INI файл.", color = Color.Gray, fontSize = 14.sp)
-                        }
-                        Spacer(modifier = Modifier.weight(localWeights[4]))
+                    Box(
+                        modifier = Modifier.fillMaxSize().padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = "Прибор не выбран. Загрузите INI файл.", color = Color.Gray, fontSize = 14.sp)
                     }
-                }
-
-                // Окно с графиком накладывается поверх общего слоя СТРОГО в правую часть экрана,
-                // используя 5-й вес. Его левая граница теперь железно совпадает с разделителем 'unit'.
-                Row(modifier = Modifier.fillMaxSize()) {
-                    Spacer(modifier = Modifier.weight(localWeights[0] + localWeights[1] + localWeights[2] + localWeights[3]))
-                    OscilloscopeRightWindow(
-                        modifier = Modifier
-                            .weight(localWeights[4])
-                            .fillMaxHeight()
-                    )
                 }
             }
 
@@ -135,7 +128,7 @@ fun OscilloscopeWindow(
                 contentAlignment = Alignment.CenterStart
             ) {
                 Text(
-                    text = " Мониторинг параметров секции [RAM] в реальном времени через Modbus",
+                    text = " Мониторинг параметров секции [RAM] в реальном времени. Многоканальный самописец.",
                     color = Color.LightGray,
                     fontSize = 11.sp
                 )

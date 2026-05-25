@@ -5,10 +5,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -22,41 +25,58 @@ fun OscilloscopeRow(
     isSelected: Boolean,
     onRowClick: () -> Unit
 ) {
-    val rowBgColor = if (isSelected) Color(0xFF00FF00) else Color.White
-
+    // Высота строки — 32.dp, чтобы и текст читался отлично, и для мини-графика хватало места
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(20.dp)
-            .background(rowBgColor)
+            .height(32.dp)
+            .background(if (isSelected) Color(0xFFE2EDF8) else Color.White) // Подсветка всей строки при клике
             .clickable { onRowClick() },
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 1. name
-        Box(modifier = Modifier.weight(weights[0]).fillMaxHeight(), contentAlignment = Alignment.Center) {
-            Text(name, color = if (isSelected) Color.Black else Color(0xFF0000C8), fontSize = 11.sp, textAlign = TextAlign.Center, maxLines = 1)
-        }
-
-        // 2. Hex
-        Box(modifier = Modifier.weight(weights[1]).fillMaxHeight(), contentAlignment = Alignment.Center) {
-            Text(hex, color = Color.Black, fontSize = 11.sp, textAlign = TextAlign.Center, maxLines = 1)
-        }
-
-        // 3. physical
-        Box(modifier = Modifier.weight(weights[2]).fillMaxHeight(), contentAlignment = Alignment.Center) {
-            Text(physical, color = Color.Black, fontSize = 11.sp, textAlign = TextAlign.Center, maxLines = 1)
-        }
-
-        // 4. unit
-        Box(modifier = Modifier.weight(weights[3]).fillMaxHeight(), contentAlignment = Alignment.Center) {
-            Text(unit, color = Color.Black, fontSize = 11.sp, textAlign = TextAlign.Center, maxLines = 1)
-        }
-
+        // Колонка 1: Name
         Box(
+            modifier = Modifier.weight(weights[0]).fillMaxHeight().padding(horizontal = 6.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Text(text = name, color = Color.Black, fontSize = 12.sp, maxLines = 1)
+        }
+
+        // Колонка 2: Hex
+        Box(
+            modifier = Modifier.weight(weights[1]).fillMaxHeight().padding(horizontal = 6.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Text(text = hex, color = Color.DarkGray, fontSize = 12.sp, maxLines = 1)
+        }
+
+        // Колонка 3: Physical
+        Box(
+            modifier = Modifier.weight(weights[2]).fillMaxHeight().padding(horizontal = 6.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            // Используем derivedStateOf, чтобы Compose следил за изменением значения
+            val displayValue by remember(physical) { derivedStateOf { physical } }
+
+            Text(text = displayValue, color = Color.Black, fontSize = 12.sp, maxLines = 1)
+        }
+
+        // Колонка 4: Unit
+        Box(
+            modifier = Modifier.weight(weights[3]).fillMaxHeight().padding(horizontal = 6.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Text(text = unit, color = Color.Gray, fontSize = 12.sp, maxLines = 1)
+        }
+
+        // Колонка 5: НАШ НАСТОЯЩИЙ ЖИВОЙ КАНВАС-САМОПИСЕЦ
+        // Занимает строго 5-й вес, склеен с unit и скроллируется вместе со всей строкой!
+        OscilloscopeRightWindow(
+            physValueString = physical,
+            isSelected = isSelected,
             modifier = Modifier
-                .weight(weights.getOrElse(4) { 0.25f })
+                .weight(weights[4])
                 .fillMaxHeight()
-                .background(rowBgColor)
         )
     }
 }

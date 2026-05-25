@@ -332,27 +332,23 @@ actual suspend fun pickDirectory(): List<DeviceInfoIni>? {
         println("КРИТИЧЕСКАЯ ОШИБКА: ${e.message}")
         return null
     }
-    println("DEBUG: Успешно загружено объектов: ${results.size}")
     return if (results.isEmpty()) null else results
 }
 
 actual suspend fun pickSingleFile(): DeviceInfoIni? {
     return try {
-        println("DEBUG: Ожидание выбора одиночного файла...")
         val fileHandle: JsAny = jsShowOpenFilePicker().await<JsAny>()
         val name = getFileName(fileHandle)
 
         val content = readFileContent(fileHandle, name)
 
         if (name.lowercase().endsWith(".ini")) {
-            println("DEBUG: Обнаружен .ini файл, инициирую копирование в .txt")
             jsSaveFileAsTxt(name, content)
         }
 
         val parsedInfo = parseIniContent(content, name)
         parsedInfo
     } catch (e: Throwable) { // <-- ИСПРАВЛЕНО ТУТ (вместо Exception ловим Throwable)
-        println("DEBUG: Выбор файла отменен или произошла JS-ошибка: ${e.message}")
         null
     }
 }

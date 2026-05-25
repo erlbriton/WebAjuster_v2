@@ -101,8 +101,6 @@ object ModbusRepository {
                 val hexPacketString = WebModbusConverter.appendCRCToHex(rawPacketHex)
                 val expectedSize = 5 + (regCount * 2)
 
-                println("--> Отправка 0x03 (Адрес: $startAddress, Кол-во: $regCount), Ожидаем байт: $expectedSize")
-
                 val responseList: List<Int>? = try {
                     // Используем безопасное ожидание ответа JS
                     val hexResult = safeTransceiveAwait(hexPacketString, expectedSize)

@@ -13,21 +13,18 @@ private fun ByteArray.toHexString() =
 actual suspend fun findSerialPort(data: ByteArray) {}
 
 actual suspend fun readDeviceIdentification() {
-    println("=== [Kotlin Architecture] Запуск команды 0x11 ===")
 
     // 1. Формируем сырое тело команды (Адрес 0x01, Функция 0x11)
     val rawPacket = byteArrayOf(0x01, 0x11)
 
     // 2. Считаем и прикрепляем правильный Modbus CRC16 через наш синглтон
     val fullPacket = ModbusUtils.appendCRC(rawPacket)
-    println("--> Отправка пакета (Kotlin): ${fullPacket.toHexString()}")
 
     // 3. Отправляем в порт через изолированный движок (ожидаем паспорт на 39 байт)
     val response = SerialEngine.transceive(fullPacket, 39)
 
     // 4. Обрабатываем результат на чистом Kotlin
     if (response != null && response.isNotEmpty()) {
-        println("🔥 ОТВЕТ ПОЛУЧЕН В KOTLIN (HEX): ${response.toHexString()}")
 
         // Декодируем текстовый паспорт устройства (пропускаем первые 3 байта заголовка и 2 байта CRC)
         val asciiResult = StringBuilder()
@@ -41,7 +38,6 @@ actual suspend fun readDeviceIdentification() {
         }
 
         val resultText = asciiResult.toString()
-        println("📝 Расшифровка паспорта ASCII: $resultText")
 
         // === 1. ОТКРЫВАЕМ КРАСИВОЕ COMPOSE-ОКНО ===
         org.example.project.viewmodels.MainViewModel.instance.openHardwareDialog(resultText)
