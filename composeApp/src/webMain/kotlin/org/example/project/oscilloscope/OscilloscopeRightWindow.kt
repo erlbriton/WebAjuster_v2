@@ -17,7 +17,6 @@ import org.example.project.logic.ModbusRepository
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.example.project.logic.WebModbusConverter
-//import org.example.project.logic.safeTransceiveAwait
 
 
 
@@ -103,40 +102,48 @@ fun OscilloscopeRightWindow(
                 xGrid -= gridStep
             }
 
-            // Рисуем график, если есть хотя бы 2 точки
+            // 🔥 ОТРИСОВКА С ФИКСИРОВАННЫМ МАСШТАБОМ ВРЕМЕНИ
+            // 🔥 ОТРИСОВКА С ФИКСИРОВАННЫМ МАСШТАБОМ ВРЕМЕНИ (как в обычном осциллографе)
             if (timedPoints.size > 1) {
-                val startTime = timedPoints.first().timeMs
-                val endTime = timedPoints.last().timeMs
-                val timeSpan = endTime - startTime
+                // МАСШТАБ: 1 см экрана ≈ 1 секунда сигнала
+                // На стандартном экране (96 DPI): 1 см ≈ 38-40 пикселей
+                // 40 пикселей / 1000 мс = 0.04f пикселей на миллисекунду
+                val PIXELS_PER_MS = 0.04f
 
-                if (timeSpan > 0 && width > 0) {
-                    val path = androidx.compose.ui.graphics.Path()
+                // Привязываем правый край графика к самой свежей точке
+                val anchorTime = timedPoints.last().timeMs
+                val path = androidx.compose.ui.graphics.Path()
+                var pathStarted = false
 
-                    // Первая точка
-                    val first = timedPoints[0]
-                    var prevX = width * ((first.timeMs - startTime) / timeSpan).toFloat()
-                    var prevY = height - (((first.value - minVal) / range) * height).coerceIn(0f, height)
-                    path.moveTo(prevX, prevY)
+                for (i in timedPoints.indices) {
+                    val p = timedPoints[i]
 
-                    // Остальные точки — СТРОГО ПРЯМЫМИ ЛИНИЯМИ
-                    for (i in 1 until timedPoints.size) {
-                        val p = timedPoints[i]
-                        val x = width * ((p.timeMs - startTime) / timeSpan).toFloat()
-                        val y = height - (((p.value - minVal) / range) * height).coerceIn(0f, height)
+                    // X считается от правого края: чем старее точка, тем левее
+                    val x = width - ((anchorTime - p.timeMs) * PIXELS_PER_MS).toFloat()
 
-                        path.lineTo(x, y) // ← Без кривых, только прямые отрезки
+                    // Оптимизация: пропускаем точки, ушедшие за левый край экрана
+                    if (x < -20f) continue
 
-                        prevX = x
-                        prevY = y
+                    val y = height - (((p.value - minVal) / range) * height).coerceIn(0f, height)
+
+                    if (!pathStarted) {
+                        path.moveTo(x, y)
+                        pathStarted = true
+                    } else {
+                        path.lineTo(x, y) // ← Только прямые линии для острых углов пилы
                     }
+                }
 
+                if (pathStarted) {
                     drawPath(
                         path = path,
                         color = if (isSelected) Color(0xFF00AA00) else Color(0xFF4A90E2),
                         style = Stroke(width = 2f)
                     )
                 }
+            }//////////////////////////
+
+                }
             }
         }
-    }
-}
+
