@@ -27,17 +27,17 @@ fun OscilloscopeWindow(
     val localWeights = remember { mutableStateListOf(0.20f, 0.10f, 0.15f, 0.10f, 0.45f) }
 
     // Запускаем единый Modbus-таймер опроса для всего окна осциллографа
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(200)
-            val device = vm.currentDeviceState.value
-            if (device != null) {
-                org.example.project.logic.ModbusRepository.performModbusOpros(device, vm.currentVarsMap) { portName ->
-                    vm.setConnectedPort(portName)
-                }
-            }
-        }
-    }
+//    LaunchedEffect(Unit) {
+//        while (true) {
+//            delay(200)
+//            val device = vm.currentDeviceState.value
+//            if (device != null) {
+//                org.example.project.logic.ModbusRepository.performModbusOpros(device, vm.currentVarsMap) { portName ->
+//                    vm.setConnectedPort(portName)
+//                }
+//            }
+//        }
+//    }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(Color(0xFFEFEFEF))) {
         val totalWidthPx = constraints.maxWidth.toFloat()
@@ -100,9 +100,10 @@ fun OscilloscopeWindow(
                             // Мы передаем веса и флаг выбора.
                             // Внутри OscilloscopeRow теперь встроен Canvas для 5-й колонки!
                             OscilloscopeRow(
+                                code = param.code,
                                 name = param.idName,
-                                hex = param.hexBase,
-                                physical = param.physBase,
+                                hex = param.hexCtrl,       // ПОМЕНЯЛИ с hexBase на hexCtrl
+                                physical = param.physCtrl, // ПОМЕНЯЛИ с physBase на physCtrl
                                 unit = param.unit,
                                 weights = localWeights,
                                 isSelected = isSelected,

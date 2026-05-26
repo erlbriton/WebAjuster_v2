@@ -9,11 +9,20 @@ import kotlin.coroutines.resume
 import org.example.project.models.ParameterData
 import org.example.project.models.DeviceInfoIni
 import org.example.project.models.ParameterType
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 
 private val modbusMutex = Mutex()
 
 object ModbusRepository {
-
+    // Высокоскоростная труба для трендов осциллографа
+    private val _oscilloscopeStream = kotlinx.coroutines.flow.MutableSharedFlow<Pair<String, Float>>(
+        replay = 600,
+        extraBufferCapacity = 200,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
+    )
+    val oscilloscopeStream = _oscilloscopeStream.asSharedFlow()
     fun parseModbusRegister(rawReg: String): Int? {
         var clean = rawReg.lowercase().removePrefix("r").trim()
         if (clean.contains(".")) {
@@ -51,8 +60,6 @@ object ModbusRepository {
     suspend fun performModbusOpros(device: DeviceInfoIni, varsMap: Map<String, Double>, onPortDetected: (String) -> Unit) {
         // Опрос тоже должен монопольно владеть портом
         modbusMutex.withLock {
-            println("DEBUG: === ЗАПУСК ФИЗИЧЕСКОГО ОПРОСА КОНТРОЛЛЕРА ПО МОДБАС (0x03) ===")
-
             val allValidParams = mutableListOf<ParameterData>().apply {
                 addAll(device.flashParameters.filter { parseModbusRegister(it.modbusReg) != null })
                 addAll(device.cdParameters.filter { parseModbusRegister(it.modbusReg) != null })
@@ -168,11 +175,6 @@ object ModbusRepository {
                             }
                             val padLen = if (ext == "H" || ext == "L") 2 else 4
                             param.hexCtrl = "x" + displayValue.toString(16).uppercase().padStart(padLen, '0')
-
-// Дополнительный лог только для отладки
-                            if (param.code == "p19802") {
-                                println("DEBUG p19802: rawValue=0x${rawValue.toString(16)} ext=$ext displayValue=0x${displayValue.toString(16)} hexCtrl=${param.hexCtrl}")
-                            }
                         }///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
                         // 1. УМНЫЙ ПОИСК КОЭФФИЦИЕНТА ШКАЛЫ С ОЧИСТКОЙ КЛЮЧЕЙ КАРТЫ
@@ -188,9 +190,6 @@ object ModbusRepository {
                                 val exactKey = varsMap.keys.firstOrNull { it.trim().equals(cleanScaleName, ignoreCase = true) }
                                 if (exactKey != null) varsMap[exactKey] ?: 1.0 else 1.0
                             }
-                        }
-                        if (param.code.equals("p13321", ignoreCase = true)) {
-                            println("DEBUG: Параметр ${param.code} обновлен. RawValue: $rawValue, Итоговый hexCtrl: ${param.hexCtrl}")
                         }
 // 2. ВЫЧИСЛЕНИЕ ФИЗИЧЕСКОГО ЗНАЧЕНИЯ С УЧЕТОМ НАЙДЕННОЙ ШКАЛЫ
                      //   val bitNum = parseModbusBit(param.modbusReg)
@@ -214,6 +213,8 @@ object ModbusRepository {
                         }/////////////////////////////////////////////
 
 // 3. ВЫВОД НА ЭКРАН (физическое значение контроллера с поддержкой TPrmList)
+                        // 3. ВЫВОД НА ЭКРАН (физическое значение контроллера с поддержкой TPrmList)
+                        // 3. ВЫВОД НА ЭКРАН (физическое значение контроллера с поддержкой TPrmList)
                         if (param.dataType.equals("TPrmList", ignoreCase = true)) {
                             // Приводим текущий HEX к нижнему регистру для поиска (например, "x06")
                             val currentHexKey = param.hexCtrl.trim().lowercase()
@@ -229,7 +230,12 @@ object ModbusRepository {
                                 finalPhysValue.toString()
                             }
                         }
+
+                        // Мгновенно отправляем пару (Код параметра, Значение) напрямую в осциллограф
+                        _oscilloscopeStream.tryEmit(Pair(param.code, finalPhysValue.toFloat())) // ← ТЕПЕРЬ БУДЕТ "p04500"
+                        delay(1) // ← 1 мс задержка между параметрами = равномерный поток
                     }
+
 
                     // Обновление имени порта в UI
                     try {
@@ -244,7 +250,6 @@ object ModbusRepository {
                 // Небольшой тайм-аут между чанками опроса
                 delay(15)
             }
-            println("DEBUG: === СЕТЕВОЙ ОПРОС ЗАВЕРШЕН ===")
         }
     }
 
@@ -394,4 +399,22 @@ object ModbusRepository {
         val reg1 = (value32 and 0xFFFF).toInt()         // Low Word
         return Pair(reg1, reg2)
     }
+
+    // 🔥 ПУБЛИЧНЫЙ МЕТОД ДЛЯ БЫСТРОГО ЧТЕНИЯ ОДНОГО РЕГИСТРА
+    suspend fun readRegisterFast(regAddress: Int): Float {
+        return modbusMutex.withLock {
+            val addrHex = regAddress.toString(16).padStart(4, '0')
+            val packet = "0103${addrHex}0001"
+            val withCrc = WebModbusConverter.appendCRCToHex(packet)
+
+            val response = safeTransceiveAwait(withCrc, 7)
+
+            if (response != null && response.length >= 10) {
+                val high = response.substring(6, 8).toInt(16)
+                val low = response.substring(8, 10).toInt(16)
+                ((high shl 8) or low).toFloat()
+            } else 0f
+        }
+    }
+
 }

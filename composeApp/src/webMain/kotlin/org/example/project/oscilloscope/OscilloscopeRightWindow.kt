@@ -2,69 +2,139 @@ package org.example.project.oscilloscope
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import kotlinx.coroutines.delay
+import org.example.project.logic.ModbusRepository
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import org.example.project.logic.WebModbusConverter
+//import org.example.project.logic.safeTransceiveAwait
+
+
+
+@JsFun("() => performance.now()")
+external fun performanceNow(): Double
+
+// Простая пара время-значение (время в миллисекундах)
+private data class TimedValue(
+    val timeMs: Double,  // ✅ Теперь Double
+    val value: Float
+)
 
 @Composable
 fun OscilloscopeRightWindow(
-    physValueString: String,
+    paramCode: String,
     isSelected: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val points = remember { mutableStateListOf<Float>() }
+    val minVal = 0f
+    val maxVal = 1100f
+    val range = maxVal - minVal
 
-    // Таймер, который принудительно берет текущее значение и обновляет график
-    LaunchedEffect(Unit) {
+    val stepX = 3.5f
+    val maxPoints = 600
+    val windowDurationMs = 3_000.0 // 10 секунд
+
+    // Буфер для сглаживания (скользящее среднее)
+    val smoothingBuffer = remember { mutableStateListOf<Float>() }
+    val smoothingWindow = 1 // ← ИЗМЕНЕНО: отключаем сглаживание
+    val timedPoints = remember { mutableStateListOf<TimedValue>() }
+
+    LaunchedEffect(paramCode) {
+        var lastTime = 0.0
+        val targetAddress = 0x002D // Адрес регистра p04500 (r002D)
+
         while (true) {
-            val numeric = physValueString.replace(Regex("[^0-9.-]"), "")
-            val value = numeric.toFloatOrNull() ?: 0f
+            val startTime = performanceNow()
 
-            points.add(value)
-            if (points.size > 200) {
-                points.removeAt(0)
+            // 🔥 Прямой запрос к порту, минуя весь репозиторий
+            val value = ModbusRepository.readRegisterFast(targetAddress)
+
+            val now = performanceNow()
+            val delta = now - lastTime
+            val execTime = now - startTime
+
+            if (lastTime > 0) {
+                println("⚡ Delta: ${delta.toInt()}ms | Exec: ${execTime.toInt()}ms | Val: $value")
             }
-            delay(200) // Частота отрисовки совпадает с циклом опроса Modbus
+            lastTime = now
+
+            // Добавляем в график
+            timedPoints.add(TimedValue(now, value))
+            val cutoff = now - windowDurationMs
+            while (timedPoints.isNotEmpty() && timedPoints[0].timeMs < cutoff) {
+                timedPoints.removeAt(0)
+            }
+            if (timedPoints.size > maxPoints) timedPoints.removeAt(0)
+
+            delay(20) // 50 Гц
         }
     }
 
-    Box(modifier = modifier.background(if (isSelected) Color(0xFFE2EDF8) else Color(0xFFFAFAFA))) {
+    // Отрисовка
+    Box(
+        modifier = modifier.background(
+            if (isSelected) Color(0xFFE2EDF8) else Color(0xFFFAFAFA)
+        )
+    ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            // ... (Ваш код отрисовки остается прежним) ...
             val width = size.width
             val height = size.height
 
-            // Рисуем сетку
-            for (i in 1 until 15) {
-                drawLine(Color(0xFFEBEBEB), Offset(i * width / 15, 0f), Offset(i * width / 15, height), 1f)
+            // Сетка
+            val gridStep = 40f
+            var xGrid = width
+            while (xGrid > 0) {
+                drawLine(
+                    color = Color(0xFFEBEBEB),
+                    start = Offset(xGrid, 0f),
+                    end = Offset(xGrid, height),
+                    strokeWidth = 1f
+                )
+                xGrid -= gridStep
             }
-            drawLine(Color(0xFFF0F0F0), Offset(0f, height / 2f), Offset(width, height / 2f), 1f)
 
-            if (points.size > 1) {
-                val stepX = width / 200f
-                val maxVal = points.maxOrNull() ?: 100f
-                val minVal = points.minOrNull() ?: 0f
-                val delta = (maxVal - minVal).coerceAtLeast(1f)
-                val displayDelta = (maxVal + delta * 0.1f) - (minVal - delta * 0.1f)
-                val displayMin = minVal - delta * 0.1f
+            // Рисуем график, если есть хотя бы 2 точки
+            if (timedPoints.size > 1) {
+                val startTime = timedPoints.first().timeMs
+                val endTime = timedPoints.last().timeMs
+                val timeSpan = endTime - startTime
 
-                for (i in 0 until points.size - 1) {
-                    val x1 = stepX * i
-                    val y1 = height - (((points[i] - displayMin) / displayDelta) * height)
-                    val x2 = stepX * (i + 1)
-                    val y2 = height - (((points[i + 1] - displayMin) / displayDelta) * height)
+                if (timeSpan > 0 && width > 0) {
+                    val path = androidx.compose.ui.graphics.Path()
 
-                    if (x1 <= width) {
-                        drawLine(
-                            color = if (isSelected) Color(0xFF00AA00) else Color(0xFF4A90E2),
-                            start = Offset(x1, y1),
-                            end = Offset(x2, y2),
-                            strokeWidth = 2f
-                        )
+                    // Первая точка
+                    val first = timedPoints[0]
+                    var prevX = width * ((first.timeMs - startTime) / timeSpan).toFloat()
+                    var prevY = height - (((first.value - minVal) / range) * height).coerceIn(0f, height)
+                    path.moveTo(prevX, prevY)
+
+                    // Остальные точки — СТРОГО ПРЯМЫМИ ЛИНИЯМИ
+                    for (i in 1 until timedPoints.size) {
+                        val p = timedPoints[i]
+                        val x = width * ((p.timeMs - startTime) / timeSpan).toFloat()
+                        val y = height - (((p.value - minVal) / range) * height).coerceIn(0f, height)
+
+                        path.lineTo(x, y) // ← Без кривых, только прямые отрезки
+
+                        prevX = x
+                        prevY = y
                     }
+
+                    drawPath(
+                        path = path,
+                        color = if (isSelected) Color(0xFF00AA00) else Color(0xFF4A90E2),
+                        style = Stroke(width = 2f)
+                    )
                 }
             }
         }

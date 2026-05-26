@@ -8,13 +8,11 @@ plugins {
 }
 
 kotlin {
-    // Поддержка обычного JS
     js {
         browser()
         binaries.executable()
     }
 
-    // Поддержка Wasm
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
         browser()
@@ -34,11 +32,12 @@ kotlin {
             implementation("org.jetbrains.compose.material:material-icons-extended:1.7.3")
         }
 
-        // ДОБАВЛЯЕМ ЭТУ СЕКЦИЮ:
+        // ❌ БЛОК jsMain УДАЛЕН (не нужен, если пустой)
+
         val wasmJsMain by getting {
             dependencies {
-                // Это добавит те самые document и window
                 implementation(kotlin("stdlib-wasm-js"))
+                // ❌ Строка с kotlinx-browser УДАЛЕНА
             }
         }
 

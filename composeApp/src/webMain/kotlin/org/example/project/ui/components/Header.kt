@@ -336,7 +336,6 @@ fun HeaderTable(
                                 .width(32.dp)
                                 .fillMaxHeight()
                                 .clickable {
-                                    println("DEBUG: Клик по основной папке сработал!")
                                     actions.onPickFileRequest()
                                 },
                             contentAlignment = Alignment.Center
