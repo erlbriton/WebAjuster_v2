@@ -44,7 +44,7 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           # Указываем папку, куда Gradle складывает готовый билд сайта
-          path: './build/dist/wasmJs/productionExecutable'
+          path: './composeApp/build/dist/wasmJs/productionExecutable'
 
       - name: Deploy to GitHub Pages
         id: deployment
