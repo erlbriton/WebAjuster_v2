@@ -13,15 +13,42 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.suspendCancellableCoroutine
 import org.example.project.logic.ModbusRepository
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.example.project.logic.WebModbusConverter
-
+import kotlin.coroutines.resume
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 
 @JsFun("() => performance.now()")
 external fun performanceNow(): Double
+
+@JsFun("() => new Promise(r => requestAnimationFrame(r))")
+external fun jsRequestAnimationFrame(): kotlin.js.JsAny
+
+suspend fun awaitAnimationFrame() {
+    suspendCancellableCoroutine { continuation ->
+        jsRequestAnimationFrame()
+            .unsafeCast<kotlin.js.Promise<kotlin.js.JsAny>>()
+            .then  { if (continuation.isActive) continuation.resume(Unit); null }
+            .catch { if (continuation.isActive) continuation.resume(Unit); null }
+    }
+}
+
+@JsFun("() => new Promise(r => requestAnimationFrame(r))")
+private external fun jsRequestAnimationFrame(): kotlin.js.JsAny
+
+private suspend fun awaitAnimationFrame() {
+    suspendCancellableCoroutine { continuation ->
+        jsRequestAnimationFrame()
+            .unsafeCast<kotlin.js.Promise<kotlin.js.JsAny>>()
+            .then  { if (continuation.isActive) continuation.resume(Unit); null }
+            .catch { if (continuation.isActive) continuation.resume(Unit); null }
+    }
+}
 
 // Простая пара время-значение (время в миллисекундах)
 private data class TimedValue(
@@ -53,29 +80,25 @@ fun OscilloscopeRightWindow(
     // ШАГ 59: АВТОМАТИЧЕСКИЙ ОПРОС ЖЕЛЕЗА 50 ГЦ
     // ==========================================
     LaunchedEffect(paramCode) {
-        val targetAddress = 0x002D // Наш захардкоженный тестовый регистр
+        val targetAddress = 0x002D
 
-        while (true) {
-            // Прямой запрос в порт через репозиторий (с удержанием Mutex на время транзакции)
+        while (isActive) {
+            // requestAnimationFrame вместо delay(20) — не throttlится на Windows
+            awaitAnimationFrame()
+
             val realValue = org.example.project.logic.ModbusRepository.readRegisterFast(targetAddress)
-
             val now = performanceNow()
 
-            // Добавляем полученную из контроллера точку на график
+
             timedPoints.add(TimedValue(now, realValue))
 
-            // Чистим хвост, ушедший за экран (windowDurationMs = 3000.0)
             val cutoff = now - windowDurationMs
             while (timedPoints.isNotEmpty() && timedPoints[0].timeMs < cutoff) {
                 timedPoints.removeAt(0)
             }
             if (timedPoints.size > maxPoints) timedPoints.removeAt(0)
-
-            // Задержка 20 мс обеспечивает автоматическую частоту опроса 50 Гц
-            delay(20)
         }
     }
-    // ==========================================
 
     // Отрисовка
     Box(

@@ -18,8 +18,9 @@ fun OscilloscopeRow(
     code: String,
     name: String,
     hex: String,
-    physical: String, // Оставляем для совместимости
+    physical: String,
     unit: String,
+    modbusAddress: Int,
     weights: List<Float>,
     isSelected: Boolean,
     onRowClick: () -> Unit
@@ -64,14 +65,16 @@ fun OscilloscopeRow(
             Text(text = unit, color = Color.Gray, fontSize = 12.sp, maxLines = 1)
         }
 
-        // Колонка 5: НАШ НАСТОЯЩИЙ ЖИВОЙ КАНВАС-САМОПИСЕЦ
+        // Колонка 5: PixiJS/WebGL осциллограф
         Box(
             modifier = Modifier.weight(weights[4]).fillMaxHeight()
         ) {
-            OscilloscopeRightWindow(
-                paramCode = code,
-                isSelected = isSelected,
-                modifier = Modifier.fillMaxSize()
+            PixiOscilloscopeCell(
+                paramCode     = code,
+                modbusAddress = modbusAddress,
+                minVal        = 0.0,
+                maxVal        = 1100.0,
+                modifier      = Modifier.fillMaxSize()
             )
         }
     }

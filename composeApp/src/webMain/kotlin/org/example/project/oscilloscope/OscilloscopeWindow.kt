@@ -102,14 +102,14 @@ fun OscilloscopeWindow(
                             OscilloscopeRow(
                                 code = param.code,
                                 name = param.idName,
-                                hex = param.hexCtrl,       // ПОМЕНЯЛИ с hexBase на hexCtrl
-                                physical = param.physCtrl, // ПОМЕНЯЛИ с physBase на physCtrl
+                                hex = param.hexCtrl,
+                                physical = param.physCtrl,
                                 unit = param.unit,
+                                modbusAddress = org.example.project.logic.ModbusRepository
+                                    .parseModbusRegister(param.modbusReg) ?: 0,
                                 weights = localWeights,
                                 isSelected = isSelected,
-                                onRowClick = {
-                                    vm.selectRow(param.code)
-                                }
+                                onRowClick = { vm.selectRow(param.code) }
                             )
                         }
                     }
