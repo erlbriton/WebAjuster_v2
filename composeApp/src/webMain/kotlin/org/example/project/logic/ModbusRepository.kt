@@ -334,20 +334,35 @@ object ModbusRepository {
         return Pair(reg1, reg2)
     }
 
-    // 🔥 ШАГ 1: БЕЗОПАСНОЕ, МОМЕНТАЛЬНОЕ ЧТЕНИЕ ИЗ ПАМЯТИ ПАРАМЕТРА ПРИБОРА
+    // 🔥 НАСТОЯЩИЙ ВЫСОКОСКОРОСТНОЙ ОПРОС ОДНОГО РЕГИСТРА ИЗ ПОРТА
     suspend fun readRegisterFast(regAddress: Int): Float {
-        val vm = org.example.project.viewmodels.MainViewModel.instance
-        val device = vm.currentDeviceState.value
+        return modbusMutex.withLock {
+            val startAddrHex = regAddress.toString(16).padStart(4, '0')
+            val regCountHex = "0001" // Читаем ровно 1 регистр (16 бит)
+            val rawPacketHex = "0103" + startAddrHex + regCountHex
 
-        if (device != null) {
-            // Ищем параметр, который привязан к адресу регистра 0x002D (десятичный 45)
-            val targetParam = device.ramParameters.find { parseModbusRegister(it.modbusReg) == regAddress }
-            if (targetParam != null) {
-                // Возвращаем его актуальное физическое число, которое туда пишет запущенный в MainScreen воркер
-                return targetParam.physCtrl.toFloatOrNull() ?: 0f
+            val hexPacketString = WebModbusConverter.appendCRCToHex(rawPacketHex)
+            // Ожидаемый размер ответа функции 03 для 1 регистра:
+            // 1 байт (ID) + 1 байт (Функция) + 1 байт (Кол-во байт данных = 2) + 2 байта (Данные) + 2 байта (CRC) = 7 байт
+            val expectedSize = 7
+
+            try {
+                val hexResult = safeTransceiveAwait(hexPacketString, expectedSize)
+
+                if (!hexResult.isNullOrEmpty() && hexResult.length == (expectedSize * 2)) {
+                    // Байт ответа с данными начинаются с индекса 6 (после ID, функции и счетчика байт)
+                    val highByte = hexResult.substring(6, 8).toInt(16) and 0xFF
+                    val lowByte = hexResult.substring(8, 10).toInt(16) and 0xFF
+                    val rawValue = (highByte shl 8) or lowByte
+
+                    // Переводим в Float (если регистр знаковый 16-битный, преобразуем short)
+                    return rawValue.toShort().toFloat()
+                }
+            } catch (e: Exception) {
+                println("❌ Ошибка быстрого опроса регистра 0x${regAddress.toString(16)}: ${e.message}")
             }
+            return 0f // Если устройство не ответило
         }
-        return 0f
     }
 
     fun emitOscilloscopeData(code: String, value: Float) {

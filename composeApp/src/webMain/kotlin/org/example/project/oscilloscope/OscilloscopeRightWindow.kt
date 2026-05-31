@@ -36,7 +36,7 @@ fun OscilloscopeRightWindow(
     modifier: Modifier = Modifier
 ) {
     val minVal = 0f
-    val maxVal = 40f
+    val maxVal = 1000f
     val range = maxVal - minVal
 
     val stepX = 3.5f
@@ -48,42 +48,30 @@ fun OscilloscopeRightWindow(
     val smoothingWindow = 1 // ← ИЗМЕНЕНО: отключаем сглаживание
     val timedPoints = remember { mutableStateListOf<TimedValue>() }
 
+
     // ==========================================
-    // ШАГ 3: ЖИВОЙ СБОРЩИК ТОЧЕК ДЛЯ КАНВАСА
-    // ==========================================
-    // ==========================================
-    // ШАГ 52: ПЛАВНЫЙ ГЕНЕРАТОР ПИЛЫ 1 ГЦ НА ЧАСТОТЕ 50 ГЦ
+    // ШАГ 59: АВТОМАТИЧЕСКИЙ ОПРОС ЖЕЛЕЗА 50 ГЦ
     // ==========================================
     LaunchedEffect(paramCode) {
-        val vm = org.example.project.viewmodels.MainViewModel.instance
+        val targetAddress = 0x002D // Наш захардкоженный тестовый регистр
 
         while (true) {
+            // Прямой запрос в порт через репозиторий (с удержанием Mutex на время транзакции)
+            val realValue = org.example.project.logic.ModbusRepository.readRegisterFast(targetAddress)
+
             val now = performanceNow()
 
-            // 1. Считаем прогресс в текущей секунде (0.0 до 999.999... мс)
-            val progressInSecond = now % 200.0
+            // Добавляем полученную из контроллера точку на график
+            timedPoints.add(TimedValue(now, realValue))
 
-            // 2. Генерируем амплитуду пилы от 0 до 35 (под maxVal = 40f)
-            val maxAmplitude = 35f
-            val calculatedWaveValue = ((progressInSecond / 200.0) * maxAmplitude).toFloat()
-
-            // 3. Синхронно закидываем это значение в текстовое поле таблицы RAM (чтобы цифры бежали плавно)
-            val device = vm.currentDeviceState.value
-            val myParam = device?.ramParameters?.find { it.code == paramCode }
-            if (myParam != null) {
-                myParam.physCtrl = (kotlin.math.round(calculatedWaveValue * 100.0) / 100.0).toString()
-            }
-
-            // 4. Добавляем ИДЕАЛЬНО ПЛАВНУЮ точку в график
-            timedPoints.add(TimedValue(now, calculatedWaveValue))
-
+            // Чистим хвост, ушедший за экран (windowDurationMs = 3000.0)
             val cutoff = now - windowDurationMs
             while (timedPoints.isNotEmpty() && timedPoints[0].timeMs < cutoff) {
                 timedPoints.removeAt(0)
             }
             if (timedPoints.size > maxPoints) timedPoints.removeAt(0)
 
-            // Четкий шаг 20 мс обеспечивает 50 обновлений в секунду
+            // Задержка 20 мс обеспечивает автоматическую частоту опроса 50 Гц
             delay(20)
         }
     }
