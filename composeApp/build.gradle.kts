@@ -8,11 +8,7 @@ plugins {
 }
 
 kotlin {
-    js {
-        browser()
-        binaries.executable()
-    }
-
+    // Оставляем только современный WasmJs таргет. Обычный JS полностью удален.
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
         browser()
@@ -32,12 +28,9 @@ kotlin {
             implementation("org.jetbrains.compose.material:material-icons-extended:1.7.3")
         }
 
-        // ❌ БЛОК jsMain УДАЛЕН (не нужен, если пустой)
-
         val wasmJsMain by getting {
             dependencies {
                 implementation(kotlin("stdlib-wasm-js"))
-                // ❌ Строка с kotlinx-browser УДАЛЕНА
             }
         }
 

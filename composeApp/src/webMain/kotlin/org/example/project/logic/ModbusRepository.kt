@@ -12,6 +12,7 @@ import org.example.project.models.ParameterType
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.launch
 
 private val modbusMutex = Mutex()
 
@@ -23,6 +24,7 @@ object ModbusRepository {
         onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
     )
     val oscilloscopeStream = _oscilloscopeStream.asSharedFlow()
+
     fun parseModbusRegister(rawReg: String): Int? {
         var clean = rawReg.lowercase().removePrefix("r").trim()
         if (clean.contains(".")) {
@@ -127,7 +129,6 @@ object ModbusRepository {
                 }
 
                 if (responseList != null && responseList.size == expectedSize) {
-                    // 1. Набиваем карту сырых регистров из буфера ответа
                     val addressToValueMap = mutableMapOf<Int, Int>()
                     val startReg = chunk.first()
 
@@ -138,11 +139,8 @@ object ModbusRepository {
                         addressToValueMap[currentRegAddress] = (highByte shl 8) or lowByte
                     }
 
-                    // 2. СТРОИМ КАРТУ ПО УНИКАЛЬНЫМ КОДАМ ПАРАМЕТРОВ (p16600, p10900)
-                    // Собираем все параметры, которые входят в текущую пачку (chunk) регистров
                     val paramsInThisChunk = chunk.flatMap { regToParamsMap[it] ?: emptyList() }.distinctBy { it.code }
 
-                    // 3. ОБРАБАТЫВАЕМ КАЖДЫЙ ПАРАМЕТР РОВНО ОДИН РАЗ
                     paramsInThisChunk.forEach { param ->
                         val isTFloat  = param.dataType.equals("TFloat",  ignoreCase = true)
                         val isTIPAddr = param.dataType.equals("TIPAddr", ignoreCase = true)
@@ -156,16 +154,14 @@ object ModbusRepository {
                             (addressToValueMap[baseAddress] ?: 0).toLong()
                         }
 
-                        // Записываем HEX (8 символов для TFloat, 4 символа для 16-бит, без префикса 'x')
                         val bitNum = parseModbusBit(param.modbusReg)
                         if (bitNum != null) {
                             val bitValue = (rawValue shr bitNum) and 1
-                            param.hexCtrl = bitValue.toString() // Теперь "0" или "1"
-                            param.physCtrl = bitValue.toString() // И в Physical тоже "0" или "1"
+                            param.hexCtrl = bitValue.toString()
+                            param.physCtrl = bitValue.toString()
                         } else if (isTFloat || isTIPAddr) {
                             param.hexCtrl = "x" + rawValue.toString(16).uppercase().padStart(8, '0')
                         } else {
-                            // Для байтовых регистров (.L и .H) — вырезаем только нужный байт
                             val ext = if (param.modbusReg.contains("."))
                                 param.modbusReg.substringAfter(".").uppercase() else ""
                             val displayValue = when (ext) {
@@ -175,9 +171,8 @@ object ModbusRepository {
                             }
                             val padLen = if (ext == "H" || ext == "L") 2 else 4
                             param.hexCtrl = "x" + displayValue.toString(16).uppercase().padStart(padLen, '0')
-                        }///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+                        }
 
-                        // 1. УМНЫЙ ПОИСК КОЭФФИЦИЕНТА ШКАЛЫ С ОЧИСТКОЙ КЛЮЧЕЙ КАРТЫ
                         val cleanScaleName = param.scaleName.trim()
                         val scaleValue = if (cleanScaleName.isEmpty()) {
                             1.0
@@ -186,22 +181,18 @@ object ModbusRepository {
                             if (directNumber != null) {
                                 directNumber
                             } else {
-                                // Ищем ключ в varsMap, обрезая пробелы у каждого ключа карты
                                 val exactKey = varsMap.keys.firstOrNull { it.trim().equals(cleanScaleName, ignoreCase = true) }
                                 if (exactKey != null) varsMap[exactKey] ?: 1.0 else 1.0
                             }
                         }
-// 2. ВЫЧИСЛЕНИЕ ФИЗИЧЕСКОГО ЗНАЧЕНИЯ С УЧЕТОМ НАЙДЕННОЙ ШКАЛЫ
-                     //   val bitNum = parseModbusBit(param.modbusReg)
+
                         val finalPhysValue = if (bitNum != null) {
                             ((rawValue shr bitNum) and 1).toDouble()
                         } else if (param.dataType.equals("TFloat", ignoreCase = true)) {
-                            // Ветка для 32-битных Float параметров
                             val floatVal = Float.fromBits(rawValue.toInt()).toDouble()
                             val rawCalculated = floatVal * scaleValue
                             kotlin.math.round(rawCalculated * 10000.0) / 10000.0
                         } else {
-                            // Для байтовых регистров — берём только свой байт
                             val ext = if (param.modbusReg.contains("."))
                                 param.modbusReg.substringAfter(".").uppercase() else ""
                             val byteValue = when (ext) {
@@ -210,20 +201,13 @@ object ModbusRepository {
                                 else -> rawValue and 0xFFFF
                             }
                             byteValue * scaleValue
-                        }/////////////////////////////////////////////
+                        }
 
-// 3. ВЫВОД НА ЭКРАН (физическое значение контроллера с поддержкой TPrmList)
-                        // 3. ВЫВОД НА ЭКРАН (физическое значение контроллера с поддержкой TPrmList)
-                        // 3. ВЫВОД НА ЭКРАН (физическое значение контроллера с поддержкой TPrmList)
                         if (param.dataType.equals("TPrmList", ignoreCase = true)) {
-                            // Приводим текущий HEX к нижнему регистру для поиска (например, "x06")
                             val currentHexKey = param.hexCtrl.trim().lowercase()
-                            // Парсим карту вариантов из строки scaleName
                             val prmMap = ParamConverter.parsePrmList(param.scaleName)
-                            // Ищем текст по HEX-ключу. Если не нашли — выводим исходный HEX
                             param.physCtrl = prmMap[currentHexKey] ?: param.hexCtrl
                         } else {
-                            // Стандартный вывод для всех остальных числовых типов
                             param.physCtrl = if (finalPhysValue % 1.0 == 0.0) {
                                 finalPhysValue.toLong().toString()
                             } else {
@@ -231,13 +215,10 @@ object ModbusRepository {
                             }
                         }
 
-                        // Мгновенно отправляем пару (Код параметра, Значение) напрямую в осциллограф
-                        _oscilloscopeStream.tryEmit(Pair(param.code, finalPhysValue.toFloat())) // ← ТЕПЕРЬ БУДЕТ "p04500"
-                        delay(1) // ← 1 мс задержка между параметрами = равномерный поток
+                        _oscilloscopeStream.tryEmit(Pair(param.code, finalPhysValue.toFloat()))
+                        delay(1)
                     }
 
-
-                    // Обновление имени порта в UI
                     try {
                         val portName = getWasmPortName().toString()
                         if (portName.isNotEmpty()) onPortDetected(portName)
@@ -247,16 +228,11 @@ object ModbusRepository {
                     println("❌ Ошибка Modbus: Устройство не ответило или размер пакета не совпал.")
                 }
 
-                // Небольшой тайм-аут между чанками опроса
                 delay(15)
             }
         }
     }
 
-    /**
-     * Единственная точка входа для записи параметров.
-     * Полностью синхронизирована на уровне корутин.
-     */
     suspend fun writeSingleParameter(param: ParameterData, varsMap: Map<String, Double>): Boolean {
         return modbusMutex.withLock {
             val address = parseModbusRegister(param.modbusReg) ?: return@withLock false
@@ -264,27 +240,19 @@ object ModbusRepository {
             val isTIPAddr = param.dataType.equals("TIPAddr", ignoreCase = true)
             val hasExtension = param.modbusReg.contains(".")
 
-            // Убираем всё, кроме цифр и букв A-F
             val currentHexInCell = param.hexCtrl.filter { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }
 
             val rawPacket = if (isTFloat || isTIPAddr) {
-                // ЗАПИСЬ 32-БИТНОГО ПАРАМЕТРА (TFloat)
                 val raw32BitValue = currentHexInCell.toLongOrNull(16) ?: 0L
-
-                // Распиливаем одно 32-битное число на два регистра по нашей Си-логике
                 val (reg1, reg2) = split32BitValue(raw32BitValue)
 
                 val reg1Hex = reg1.toString(16).padStart(4, '0')
                 val reg2Hex = reg2.toString(16).padStart(4, '0')
 
-                // Формируем пакет функции 0x10: Записать 2 регистра (0002), длина данных 4 байта (04)
-                // Передаем сначала reg1 (Low), затем reg2 (High)
                 "0110" + address.toString(16).padStart(4, '0') + "000204" + reg1Hex + reg2Hex
             } else {
-                // ЗАПИСЬ ОБЫЧНОГО 16-БИТНОГО ПАРАМЕТРА
                 val raw16BitValue = currentHexInCell.toIntOrNull(16) ?: 0
                 val finalHexValue = if (hasExtension) {
-                    // Логика побитовой маски (Read-Modify-Write)
                     val current = readSingleRegisterDirectlyInternal(address) ?: return@withLock false
                     val ext = param.modbusReg.substringAfter(".").uppercase()
                     when (ext) {
@@ -301,33 +269,17 @@ object ModbusRepository {
                 }
 
                 val hexWord = finalHexValue.toString(16).padStart(4, '0')
-                // Функция 0x10: Записать 1 регистр (0001), длина данных 2 байта (02)
                 "0110" + address.toString(16).padStart(4, '0') + "000102" + hexWord
             }
 
             val packetWithCrc = WebModbusConverter.appendCRCToHex(rawPacket)
-            println("DEBUG writeSingleParameter: param=${param.code} modbusReg=${param.modbusReg} hexCtrl=${param.hexCtrl} packet=$packetWithCrc")
-
-// Читаем текущий регистр перед записью чтобы увидеть что там лежит
-            if (param.modbusReg.contains(".")) {
-                val address2 = parseModbusRegister(param.modbusReg)
-                if (address2 != null) {
-                    val current = readSingleRegisterDirectlyInternal(address2)
-                    println("DEBUG: Текущее значение регистра ${param.modbusReg} = ${current?.toString(16)}")
-                }
-            }
-
             val writeResult = safeTransceiveAwait(packetWithCrc, 8)
-            println("DEBUG writeSingleParameter: writeResult=$writeResult")
             delay(40)
 
             return@withLock writeResult != null
         }
     }
 
-    /**
-     * Внутреннее чтение, вызываемое строго внутри существующего lock-а writeSingleParameter
-     */
     private suspend fun readSingleRegisterDirectlyInternal(regAddress: Int): Int? {
         val startAddrHex = regAddress.toString(16).padStart(4, '0')
         val rawPacketHex = "0103" + startAddrHex + "0001"
@@ -344,77 +296,61 @@ object ModbusRepository {
         return null
     }
 
-    /**
-     * Публичный метод для одиночного чтения (например, из UI)
-     */
     private suspend fun readSingleRegisterDirectly(regAddress: Int): Int? {
         return modbusMutex.withLock {
             readSingleRegisterDirectlyInternal(regAddress)
         }
     }
 
-    /**
-     * Безопасная запись байта в регистр с автоблокировкой
-     */
     suspend fun writeByteToRegister(address: Int, modbusReg: String, newValueHex: String): Boolean {
         return modbusMutex.withLock {
-            // 1. Читаем текущее значение регистра используя внутренний метод без лока
             val currentRegValue = readSingleRegisterDirectlyInternal(address) ?: return@withLock false
-
-            // 2. Парсим новое значение байта
             val newByteValue = newValueHex.toIntOrNull(16) ?: 0
 
-            // 3. Формируем новое 16-битное значение
             val updatedValue = if (modbusReg.contains(".H", ignoreCase = true)) {
                 (currentRegValue and 0x00FF) or ((newByteValue and 0xFF) shl 8)
             } else {
                 (currentRegValue and 0xFF00) or (newByteValue and 0xFF)
             }
 
-            // 4. Пишем готовое 16-битное слово обратно
             val hexValue = updatedValue.toString(16).padStart(4, '0')
             val rawPacket = "0110" + address.toString(16).padStart(4, '0') + "000102" + hexValue
             val packetWithCrc = WebModbusConverter.appendCRCToHex(rawPacket)
 
             val writeResult = safeTransceiveAwait(packetWithCrc, 8)
-
             delay(20)
 
             return@withLock writeResult != null
         }
     }
 
-    /**
-     * Собирает 32-битное число из двух 16-битных регистров (Low Word / High Word Swap)
-     */
     fun build32BitValue(reg1: Int, reg2: Int): Long {
         return ((reg2 and 0xFFFF).toLong() shl 16) or (reg1 and 0xFFFF).toLong()
     }
 
-    /**
-     * Распиливает 32-битное число на два 16-битных регистра для отправки по Modbus
-     */
     fun split32BitValue(value32: Long): Pair<Int, Int> {
-        val reg2 = ((value32 shr 16) and 0xFFFF).toInt() // High Word
-        val reg1 = (value32 and 0xFFFF).toInt()         // Low Word
+        val reg2 = ((value32 shr 16) and 0xFFFF).toInt()
+        val reg1 = (value32 and 0xFFFF).toInt()
         return Pair(reg1, reg2)
     }
 
-    // 🔥 ПУБЛИЧНЫЙ МЕТОД ДЛЯ БЫСТРОГО ЧТЕНИЯ ОДНОГО РЕГИСТРА
+    // 🔥 ШАГ 1: БЕЗОПАСНОЕ, МОМЕНТАЛЬНОЕ ЧТЕНИЕ ИЗ ПАМЯТИ ПАРАМЕТРА ПРИБОРА
     suspend fun readRegisterFast(regAddress: Int): Float {
-        return modbusMutex.withLock {
-            val addrHex = regAddress.toString(16).padStart(4, '0')
-            val packet = "0103${addrHex}0001"
-            val withCrc = WebModbusConverter.appendCRCToHex(packet)
+        val vm = org.example.project.viewmodels.MainViewModel.instance
+        val device = vm.currentDeviceState.value
 
-            val response = safeTransceiveAwait(withCrc, 7)
-
-            if (response != null && response.length >= 10) {
-                val high = response.substring(6, 8).toInt(16)
-                val low = response.substring(8, 10).toInt(16)
-                ((high shl 8) or low).toFloat()
-            } else 0f
+        if (device != null) {
+            // Ищем параметр, который привязан к адресу регистра 0x002D (десятичный 45)
+            val targetParam = device.ramParameters.find { parseModbusRegister(it.modbusReg) == regAddress }
+            if (targetParam != null) {
+                // Возвращаем его актуальное физическое число, которое туда пишет запущенный в MainScreen воркер
+                return targetParam.physCtrl.toFloatOrNull() ?: 0f
+            }
         }
+        return 0f
     }
 
+    fun emitOscilloscopeData(code: String, value: Float) {
+        _oscilloscopeStream.tryEmit(Pair(code, value))
+    }
 }

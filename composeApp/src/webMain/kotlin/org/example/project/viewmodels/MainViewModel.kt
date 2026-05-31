@@ -46,6 +46,11 @@ class MainViewModel {
 
     init {
         instance = this
+
+        // Просто запускаем высокоскоростное чтение через репозиторий при старте
+        viewModelScope.launch {
+            org.example.project.logic.ModbusRepository.readRegisterFast(0)
+        }
     }
 
     fun openHardwareDialog(text: String) {

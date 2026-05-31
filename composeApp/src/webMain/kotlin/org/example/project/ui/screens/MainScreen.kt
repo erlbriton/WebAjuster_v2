@@ -19,18 +19,34 @@ import org.example.project.logic.HeaderActionsButtons
 import org.example.project.components.HeaderTable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import org.example.project.worker.ModbusWorkerManager
 
 @Composable
 fun MainScreen() {
     val viewModel = remember { MainViewModel() }
     val scope = rememberCoroutineScope()
 
+    // ==========================================
+    // ШАГ 51: ОСТАВЛЯЕМ ВОРКЕР КАК ПРОСТОЙ ТРИГГЕР
+    // ==========================================
+    LaunchedEffect(Unit) {
+        ModbusWorkerManager.init { value ->
+            val device = viewModel.currentDeviceState.value
+            if (device != null) {
+                // Просто обновляем hex, чтобы видеть, что связь идет
+                device.ramParameters.forEach { param ->
+                    param.hexCtrl = "x" + value.toInt().toString(16).uppercase()
+                }
+            }
+        }
+    }
+    // ==========================================
+
     // Состояния для размеров
     var screenWidth by remember { mutableStateOf(0f) }
     var sidebarWidth by remember { mutableStateOf(200.dp) }
 
     // Начальное смещение для левого сплиттера, чтобы таблица была 0.4 от окна
-    // Мы вычислим это через weight, чтобы не гадать с пикселями
     var leftWeight by remember { mutableStateOf(0.5f) }
 
     var errorMessage by remember { mutableStateOf("") }
@@ -41,12 +57,10 @@ fun MainScreen() {
             mainViewModel = viewModel,
             scope = scope,
             onDeviceLoaded = { info ->
-                // 1. Чистим старые дубликаты этого файла, если они были загружены ранее
                 viewModel.devicesMap.values.forEach { list ->
                     list.removeAll { it.fileName == info.fileName }
                 }
 
-                // Исправлено: Удаляем пустые группы кроссплатформенным способом через итератор
                 val iterator = viewModel.devicesMap.entries.iterator()
                 while (iterator.hasNext()) {
                     if (iterator.next().value.isEmpty()) {
@@ -54,12 +68,10 @@ fun MainScreen() {
                     }
                 }
 
-                // 2. Кладем файл в нужную папку-локацию дерева
                 viewModel.devicesMap.getOrPut(info.location) {
                     androidx.compose.runtime.mutableStateListOf()
                 }.add(info)
 
-                // 3. Автоматически активируем только что загруженное устройство в таблице
                 viewModel.selectDevice(info)
             },
             ShowError = { message ->
@@ -74,7 +86,6 @@ fun MainScreen() {
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.White)
-                // Запоминаем общую ширину окна для расчетов драга
                 .onGloballyPositioned { screenWidth = it.size.width.toFloat() }
         ) {
 
@@ -105,7 +116,6 @@ fun MainScreen() {
                         detectDragGestures { change, dragAmount ->
                             change.consume()
                             if (screenWidth > 0) {
-                                // Пересчитываем weight в зависимости от движения мыши
                                 val deltaWeight = dragAmount.x / screenWidth
                                 leftWeight = (leftWeight + deltaWeight).coerceIn(0.1f, 0.5f)
                             }
@@ -124,7 +134,7 @@ fun MainScreen() {
 
                 Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
 
-                    // САЙДБАР (Теперь здесь живое интерактивное дерево файлов)
+                    // САЙДБАР
                     DeviceSidebar(
                         modifier = Modifier
                             .width(sidebarWidth)
@@ -157,7 +167,6 @@ fun MainScreen() {
                     ) {
                         LineTwoTable()
 
-                        // Читаем значение напрямую из стейта, исключая любые двусмысленности компилятора
                         val activeDevice = viewModel.currentDeviceState.value
                         LineThirdTable(selectedDevice = activeDevice)
 
