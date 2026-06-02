@@ -1,4 +1,4 @@
-//MainScreen.kt
+// MainScreen.kt
 
 package org.example.project.ui.screens
 
@@ -46,7 +46,7 @@ fun MainScreen() {
     var screenWidth by remember { mutableStateOf(0f) }
     var sidebarWidth by remember { mutableStateOf(200.dp) }
 
-    // Начальное смещение для левого сплиттера, чтобы таблица была 0.4 от окна
+    // Начальное смещение для левого сплиттера, чтобы таблица была 0.5 от окна
     var leftWeight by remember { mutableStateOf(0.5f) }
 
     var errorMessage by remember { mutableStateOf("") }
@@ -89,7 +89,7 @@ fun MainScreen() {
                 .onGloballyPositioned { screenWidth = it.size.width.toFloat() }
         ) {
 
-            // ЛЕВАЯ ЧАСТЬ: Пустота (0.6 от экрана по умолчанию)
+            // ЛЕВАЯ ЧАСТЬ: Строго ваше оригинальное расположение (Осциллограф или Белая Пустота)
             if (viewModel.isOscilloscopeWindowOpen) {
                 OscilloscopeWindow(
                     viewModel = viewModel,
@@ -102,11 +102,11 @@ fun MainScreen() {
                     modifier = Modifier
                         .weight(leftWeight)
                         .fillMaxHeight()
-                        .background(Color.White)
+                        .background(Color.White) // При закрытии гарантированно возвращаем белый фон
                 )
             }
 
-            // ЛЕВЫЙ СПЛИТТЕР (Граница всей таблицы)
+            // ЛЕВЫЙ СПЛИТТЕР (Граница всей таблицы — строго на своем месте)
             Box(
                 modifier = Modifier
                     .width(4.dp)
@@ -123,7 +123,7 @@ fun MainScreen() {
                     }
             )
 
-            // ПРАВАЯ ЧАСТЬ: Приложение (0.4 от экрана по умолчанию)
+            // ПРАВАЯ ЧАСТЬ: Полностью нетронутое приложение (Ваши таблицы, сайдбары и кнопки)
             Column(
                 modifier = Modifier
                     .weight(1f - leftWeight)
@@ -158,7 +158,7 @@ fun MainScreen() {
                             }
                     )
 
-                    // ТАБЛИЦЫ
+                    // ТАБЛИЦЫ (Сюда мы вообще не прикасаемся)
                     Column(
                         modifier = Modifier
                             .weight(1f)
