@@ -4,7 +4,7 @@
 
 package org.example.project.components
 
-import org.example.project.oscilloscope.OscilloscopeState
+//import org.example.project.oscilloscope.OscilloscopeState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -194,9 +194,9 @@ fun HeaderTable(
                             modifier = Modifier
                                 .fillMaxHeight()
                                 .clickable {
-                                    // Переключаем состояние окна (открыто/закрыто)
-                                    vm.oscilloscopeState.isWindowOpen = !vm.oscilloscopeState.isWindowOpen
-                                    println("Осциллограф открыт: ${vm.oscilloscopeState.isWindowOpen}")
+                                    // Переключаем состояние окна (открыто/закрыто) прямо во ViewModel
+                                    vm.isOscilloscopeWindowOpen = !vm.isOscilloscopeWindowOpen
+                                    println("Осциллограф открыт: ${vm.isOscilloscopeWindowOpen}")
                                 }
                                 .padding(horizontal = 4.dp),
                             contentAlignment = Alignment.Center

@@ -1,3 +1,5 @@
+// MainViewModel.kt
+
 package org.example.project.viewmodels
 
 import androidx.compose.runtime.*
@@ -6,13 +8,23 @@ import org.example.project.models.DeviceInfoIni
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
 import org.example.project.logic.ModbusRepository
 import org.example.project.logic.ParamConverter
-import org.example.project.oscilloscope.OscilloscopeState
+
+// ====================================================================
+// ИНТЕРФЕЙСНЫЙ МОСТ МЕЖДУ KOTLIN И JAVASCRIPT (Wasm-совместимый)
+// ====================================================================
+// Объявляем внешние JS-функции. Передаем массив в виде строки,
+// так как Kotlin/Wasm interop напрямую не поддерживает IntArray.
+
+@JsFun("(registersStr, baudRate) => { if (window.oscilloStart) window.oscilloStart(registersStr, baudRate); }")
+external fun callJsOscilloStart(registersStr: String, baudRate: Int)
+
+@JsFun("() => { if (window.oscilloStop) window.oscilloStop(); }")
+external fun callJsOscilloStop()
+
 
 class MainViewModel {
-    val oscilloscopeState = OscilloscopeState()
     var currentVarsMap = mapOf<String, Double>()
     var typeMechanism        by mutableStateOf("Не указан")
     var dateSet              by mutableStateOf("29.01.1964")
@@ -39,19 +51,52 @@ class MainViewModel {
 
     private val viewModelScope = MainScope()
 
-
     companion object {
         lateinit var instance: MainViewModel
     }
 
+    // Флаг, который управляет тем, открыто ли сейчас окно осциллографа
+    var isOscilloscopeWindowOpen by mutableStateOf(false)
+
     init {
         instance = this
+        // СТАРАЯ КОРУТИНА ВЫСОКОСКОРОСТНОГО ОПРОСА readRegisterFast(0) УДАЛЕНА.
+        // Теперь запуск опроса контролируется осознанно через интерфейс моста.
+    }
 
-        // Просто запускаем высокоскоростное чтение через репозиторий при старте
-        viewModelScope.launch {
-            org.example.project.logic.ModbusRepository.readRegisterFast(0)
+    // ====================================================================
+    // ФУНКЦИИ УПРАВЛЕНИЯ НОВЫМ JS-ОСЦИЛЛОГРАФОМ
+    // ====================================================================
+
+    /**
+     * Запускает высокоскоростной опрос выбранных регистров в JS.
+     * Принимает список адресов (например, [0x002D, 0x002E]) и скорость порта.
+     */
+    fun startJsOscilloscope(registers: IntArray, baudRate: Int = 115200) {
+        try {
+            // Преобразуем IntArray в строку вида "0,1,2,3,4" для безопасной передачи в Wasm interop
+            val registersStr = registers.joinToString(separator = ",")
+
+            callJsOscilloStart(registersStr, baudRate)
+            println("🚀 Сигнал на старт JS-осциллографа отправлен для регистров: $registersStr")
+        } catch (e: Exception) {
+            println("❌ Не удалось вызвать window.oscilloStart: ${e.message}")
         }
     }
+
+    /**
+     * Полностью останавливает поток опроса и анимацию в JS.
+     */
+    fun stopJsOscilloscope() {
+        try {
+            callJsOscilloStop()
+            println("🛑 Сигнал на остановку JS-осциллографа отправлен.")
+        } catch (e: Exception) {
+            println("❌ Не удалось вызвать window.oscilloStop: ${e.message}")
+        }
+    }
+
+    // ====================================================================
 
     fun openHardwareDialog(text: String) {
         hardwareDialogText = text
@@ -86,7 +131,7 @@ class MainViewModel {
     fun selectDevice(device: DeviceInfoIni) {
         selectedDeviceId = device.id
         currentDeviceState.value = device
-        currentVarsMap = device.varsMap // ЖЕЛЕЗНО ПЕРЕДАЕМ ШКАЛЫ ПРИ ВЫБОРЕ ПРИБОРА
+        currentVarsMap = device.varsMap
         installationLocation = device.location
         typeMechanism = device.Description.ifEmpty { "" }
         refreshParametersList()
@@ -121,7 +166,6 @@ class MainViewModel {
             val shouldBeSelected = (param.code == code)
             if (param.isSelected != shouldBeSelected) {
                 param.isSelected = shouldBeSelected
-                // Перезаписываем элемент по индексу, чтобы Compose увидел изменения
                 parameters[i] = param
             }
         }
@@ -130,7 +174,6 @@ class MainViewModel {
     fun copyBaseToController() = parameters.forEach { it.hexCtrl = it.hexBase; it.physCtrl = it.physBase }
     fun copyControllerToBase() = parameters.forEach { it.hexBase = it.hexCtrl; it.physBase = it.physCtrl }
 
-    // Перенаправляем вызовы в ParamConverter
     fun updateHexBase(param: ParameterData, newHex: String) = ParamConverter.updateHexValue(param, newHex, currentVarsMap, true)
     fun updatePhysBase(param: ParameterData, newPhys: String) = ParamConverter.updatePhysValue(param, newPhys, currentVarsMap, true)
     fun updateHexCtrl(param: ParameterData, newHex: String) = ParamConverter.updateHexValue(param, newHex, currentVarsMap, false)
@@ -142,7 +185,6 @@ class MainViewModel {
             ModbusRepository.performModbusOpros(device, currentVarsMap) { portName ->
                 setConnectedPort(portName)
             }
-            // Форсированный триггер Compose
             androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
                 val currentArea = selectedMemoryArea
                 selectedMemoryArea = ""
@@ -154,17 +196,13 @@ class MainViewModel {
     fun writeParameterToDevice(param: ParameterData) {
         viewModelScope.launch {
             if (currentDeviceState.value == null) return@launch
-            val success = ModbusRepository.writeSingleParameter(param, currentVarsMap) // Берем согласованную карту шкал
+            val success = ModbusRepository.writeSingleParameter(param, currentVarsMap)
             if (!success) {
                 openHardwareDialog("Ошибка записи параметра ${param.code} в контроллер.")
             }
         }
     }
 
-    /**
-     * Переносит все значения из БАЗЫ в КОНТРОЛЛЕР
-     * и физически записывает их в устройство по Modbus.
-     */
     fun writeAllBaseToControllerDevice() {
         copyBaseToController()
 
@@ -172,11 +210,9 @@ class MainViewModel {
             var hasError = false
             var errorCount = 0
 
-            // 1. Разбиваем параметры на две группы: обычные и побайтовые (.H/.L)
             val byteParams = parameters.filter { it.modbusReg.contains(".H") || it.modbusReg.contains(".L") }
             val regularParams = parameters.filter { !it.modbusReg.contains(".H") && !it.modbusReg.contains(".L") }
 
-            // 2. Отправляем обычные параметры (как раньше)
             regularParams.forEach { param ->
                 if (!ModbusRepository.writeSingleParameter(param, currentVarsMap)) {
                     hasError = true
@@ -184,29 +220,15 @@ class MainViewModel {
                 }
             }
 
-            // 3. Группируем байтовые параметры по номеру регистра (например, r2064)
             val groupedBytes = byteParams.groupBy { it.modbusReg.substringBefore(".") }
 
-            // 4. Отправляем сгруппированные регистры
             for ((_, paramsInGroup) in groupedBytes) {
-                // Берем первый параметр из группы, чтобы узнать адрес регистра (он у них общий)
-                val baseParam = paramsInGroup.first()
-
-                // Вместо того чтобы вызывать writeSingleParameter много раз,
-                // мы вызываем его только один раз для "базового" регистра,
-                // НО нам нужно убедиться, что внутри ModbusRepository
-                // логика чтения/записи учитывает оба байта.
-
-                // ВАРИАНТ: Если вы оставите логику внутри writeSingleParameter (как мы обсуждали),
-                // то для групповой записи вам нужно передать туда "собранное" значение.
-
-                // Если вы не хотите менять архитектуру репозитория, самый простой "костыль" здесь — delay
                 paramsInGroup.forEach { param ->
                     if (!ModbusRepository.writeSingleParameter(param, currentVarsMap)) {
                         hasError = true
                         errorCount++
                     }
-                    delay(100) // ДАЕМ КОНТРОЛЛЕРУ ВРЕМЯ НА ПЕРЕЗАПИСЬ ПАМЯТИ
+                    delay(100)
                 }
             }
 
@@ -215,7 +237,6 @@ class MainViewModel {
             }
         }
     }
-
 }
 
 val LocalMainViewModel = staticCompositionLocalOf<MainViewModel> {

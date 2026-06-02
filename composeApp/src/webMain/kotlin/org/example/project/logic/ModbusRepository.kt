@@ -1,29 +1,20 @@
+// ModbusRepository.kt
+
 package org.example.project.logic
 
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.suspendCancellableCoroutine
-import org.example.project.logic.ModbusRepository.parseModbusRegister
 import kotlin.coroutines.resume
 import org.example.project.models.ParameterData
 import org.example.project.models.DeviceInfoIni
-import org.example.project.models.ParameterType
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.launch
 
 private val modbusMutex = Mutex()
 
 object ModbusRepository {
-    // Высокоскоростная труба для трендов осциллографа
-    private val _oscilloscopeStream = kotlinx.coroutines.flow.MutableSharedFlow<Pair<String, Float>>(
-        replay = 600,
-        extraBufferCapacity = 200,
-        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
-    )
-    val oscilloscopeStream = _oscilloscopeStream.asSharedFlow()
+
+    // СТАРАЯ ТРУБА ОСЦИЛЛОГРАФА УДАЛЕНА: Теперь графики крутятся на 100% внутри JS + WebGL
 
     fun parseModbusRegister(rawReg: String): Int? {
         var clean = rawReg.lowercase().removePrefix("r").trim()
@@ -59,8 +50,8 @@ object ModbusRepository {
         }
     }
 
+    // Опрос общей таблицы параметров (оставляем в Kotlin, так как он обновляет UI Compose)
     suspend fun performModbusOpros(device: DeviceInfoIni, varsMap: Map<String, Double>, onPortDetected: (String) -> Unit) {
-        // Опрос тоже должен монопольно владеть портом
         modbusMutex.withLock {
             val allValidParams = mutableListOf<ParameterData>().apply {
                 addAll(device.flashParameters.filter { parseModbusRegister(it.modbusReg) != null })
@@ -73,7 +64,6 @@ object ModbusRepository {
                 val regAddress = parseModbusRegister(param.modbusReg)!!
                 regToParamsMap.getOrPut(regAddress) { mutableListOf() }.add(param)
 
-                // ЖЕЛЕЗНО ВКЛЮЧАЕМ ВТОРОЙ РЕГИСТР В СПИСОК ОПРОСА ДЛЯ 32-БИТНЫХ ТИПОВ
                 if (param.dataType.equals("TFloat",  ignoreCase = true) ||
                     param.dataType.equals("TIPAddr", ignoreCase = true)) {
                     regToParamsMap.getOrPut(regAddress + 1) { mutableListOf() }
@@ -111,7 +101,6 @@ object ModbusRepository {
                 val expectedSize = 5 + (regCount * 2)
 
                 val responseList: List<Int>? = try {
-                    // Используем безопасное ожидание ответа JS
                     val hexResult = safeTransceiveAwait(hexPacketString, expectedSize)
 
                     if (!hexResult.isNullOrEmpty()) {
@@ -215,7 +204,7 @@ object ModbusRepository {
                             }
                         }
 
-                        _oscilloscopeStream.tryEmit(Pair(param.code, finalPhysValue.toFloat()))
+                        // СТРОКА tryEmit СЮДА БОЛЬШЕ НЕ НУЖНА — МЫ ЕЁ ВЫРЕЗАЛИ
                         delay(1)
                     }
 
@@ -233,6 +222,7 @@ object ModbusRepository {
         }
     }
 
+    // Метод записи параметра (тоже оставляем в Kotlin для редактирования ячеек таблицы)
     suspend fun writeSingleParameter(param: ParameterData, varsMap: Map<String, Double>): Boolean {
         return modbusMutex.withLock {
             val address = parseModbusRegister(param.modbusReg) ?: return@withLock false
@@ -296,7 +286,7 @@ object ModbusRepository {
         return null
     }
 
-    private suspend fun readSingleRegisterDirectly(regAddress: Int): Int? {
+    suspend fun readSingleRegisterDirectly(regAddress: Int): Int? {
         return modbusMutex.withLock {
             readSingleRegisterDirectlyInternal(regAddress)
         }
@@ -334,38 +324,5 @@ object ModbusRepository {
         return Pair(reg1, reg2)
     }
 
-    // 🔥 НАСТОЯЩИЙ ВЫСОКОСКОРОСТНОЙ ОПРОС ОДНОГО РЕГИСТРА ИЗ ПОРТА
-    suspend fun readRegisterFast(regAddress: Int): Float {
-        return modbusMutex.withLock {
-            val startAddrHex = regAddress.toString(16).padStart(4, '0')
-            val regCountHex = "0001" // Читаем ровно 1 регистр (16 бит)
-            val rawPacketHex = "0103" + startAddrHex + regCountHex
-
-            val hexPacketString = WebModbusConverter.appendCRCToHex(rawPacketHex)
-            // Ожидаемый размер ответа функции 03 для 1 регистра:
-            // 1 байт (ID) + 1 байт (Функция) + 1 байт (Кол-во байт данных = 2) + 2 байта (Данные) + 2 байта (CRC) = 7 байт
-            val expectedSize = 7
-
-            try {
-                val hexResult = safeTransceiveAwait(hexPacketString, expectedSize)
-
-                if (!hexResult.isNullOrEmpty() && hexResult.length == (expectedSize * 2)) {
-                    // Байт ответа с данными начинаются с индекса 6 (после ID, функции и счетчика байт)
-                    val highByte = hexResult.substring(6, 8).toInt(16) and 0xFF
-                    val lowByte = hexResult.substring(8, 10).toInt(16) and 0xFF
-                    val rawValue = (highByte shl 8) or lowByte
-
-                    // Переводим в Float (если регистр знаковый 16-битный, преобразуем short)
-                    return rawValue.toShort().toFloat()
-                }
-            } catch (e: Exception) {
-                println("❌ Ошибка быстрого опроса регистра 0x${regAddress.toString(16)}: ${e.message}")
-            }
-            return 0f // Если устройство не ответило
-        }
-    }
-
-    fun emitOscilloscopeData(code: String, value: Float) {
-        _oscilloscopeStream.tryEmit(Pair(code, value))
-    }
+    // СТАРАЯ ФУНКЦИЯ БЫСТРОГО ОПРОСА readRegisterFast УДАЛЕНА: Теперь опрос делает JS
 }

@@ -90,9 +90,9 @@ fun MainScreen() {
         ) {
 
             // ЛЕВАЯ ЧАСТЬ: Пустота (0.6 от экрана по умолчанию)
-            if (viewModel.oscilloscopeState.isWindowOpen) {
+            if (viewModel.isOscilloscopeWindowOpen) {
                 OscilloscopeWindow(
-                    state = viewModel.oscilloscopeState,
+                    viewModel = viewModel,
                     modifier = Modifier
                         .weight(leftWeight)
                         .fillMaxHeight()
