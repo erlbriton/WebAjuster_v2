@@ -9,5 +9,6 @@ fun App() {
     MaterialTheme {
         // Теперь здесь живет твой основной экран
         MainScreen()
+
     }
 }

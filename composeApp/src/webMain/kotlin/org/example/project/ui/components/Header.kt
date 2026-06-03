@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import org.example.project.jsinterop.startModbusConnection
 import org.example.project.logic.HeaderActionsInterface
 import org.example.project.logic.readDeviceIdentification
 import org.example.project.ui.TableConfig
@@ -404,6 +405,7 @@ fun HeaderTable(
                 backgroundColor = Color(0xFFC2B7B7),
                 onClick = {
                     actions.onFileOration()
+                    startModbusConnection()
                 }
             )
             Spacer(modifier = Modifier.width(5.dp))

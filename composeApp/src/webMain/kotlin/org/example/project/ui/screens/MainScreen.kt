@@ -19,6 +19,12 @@ import org.example.project.logic.HeaderActionsButtons
 import org.example.project.components.HeaderTable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import org.example.project.jsinterop.checkJsClasses
+import org.example.project.jsinterop.getModbusValue
+import org.example.project.jsinterop.jsOscilloCreate
+import org.example.project.jsinterop.jsOscilloInit
+import org.example.project.jsinterop.jsOscilloPush
+import org.example.project.jsinterop.testJsBridge
 import org.example.project.worker.ModbusWorkerManager
 
 @Composable
@@ -30,14 +36,33 @@ fun MainScreen() {
     // ШАГ 51: ОСТАВЛЯЕМ ВОРКЕР КАК ПРОСТОЙ ТРИГГЕР
     // ==========================================
     LaunchedEffect(Unit) {
-        ModbusWorkerManager.init { value ->
-            val device = viewModel.currentDeviceState.value
-            if (device != null) {
-                // Просто обновляем hex, чтобы видеть, что связь идет
-                device.ramParameters.forEach { param ->
-                    param.hexCtrl = "x" + value.toInt().toString(16).uppercase()
-                }
+        // 🔥 ТЕСТ МОСТА
+        testJsBridge()
+        checkJsClasses()
+
+        // 🔥 ИНИЦИАЛИЗАЦИЯ ОСЦИЛЛОГРАФА
+        jsOscilloCreate("oscCanvas", "testOscillo")
+        jsOscilloInit("p002D", "oscCanvas", 0.0, 1100.0)
+
+        // 🔥 ОТКРЫТИЕ ПОРТА (упрощённо — без await, так как js() не поддерживает suspend напрямую)
+        println("🔌 Opening port...")
+
+        // 🔥 ЦИКЛ ЧТЕНИЯ ДАННЫХ
+        var lastValue = 0f
+        while (true) {
+            // 🔥 Читаем значение через топ-левел функцию (НЕ через inline js()!)
+            val value = getModbusValue().toFloat()
+
+            // Push в осциллограф
+            jsOscilloPush("p002D", value.toDouble(), 0.0, 1100.0)
+
+            // Логируем при изменении
+            if (value != lastValue) {
+                println("📡 Value: $value")
+                lastValue = value
             }
+
+            kotlinx.coroutines.delay(40) // 25 Гц
         }
     }
     // ==========================================

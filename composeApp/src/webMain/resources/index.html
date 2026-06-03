@@ -6,11 +6,15 @@
     <title>WebAjuster_v2</title>
     <link type="text/css" rel="stylesheet" href="styles.css">
 
-    <script src="serial_logic.js"></script>
+    <!-- 🔥 JS-БИБЛИОТЕКИ (порядок важен!) -->
+    <script src="serial.js"></script>
+    <script src="modbus.js"></script>
+    <script src="ringBuffer.js"></script>
     <script src="pixi_oscillo.js"></script>
+    <script src="serial_logic.js"></script>
+    <script src="main.js"></script>
 
     <style>
-        /* Убираем отступы и фиксируем размер экрана */
         html, body {
             width: 100%;
             height: 100%;
@@ -20,14 +24,12 @@
             background-color: #ffffff;
         }
 
-        /* Контейнер для Compose */
         #ComposeTarget {
             width: 100vw;
             height: 100vh;
             display: flex;
         }
 
-        /* Стили для лоадера */
         #loader {
             position: absolute;
             top: 50%;
@@ -41,6 +43,18 @@
 <body>
 
 <div id="ComposeTarget"></div>
+<!-- 🔥 ТЕСТОВЫЙ КОНТЕЙНЕР ДЛЯ ОСЦИЛЛОГРАФА (Шаг 3) -->
+<div id="testOscillo" style="
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    width: 400px;
+    height: 200px;
+    border: 3px solid red;
+    background: white;
+    z-index: 9999;
+    box-shadow: 0 0 20px rgba(255,0,0,0.5);
+"></div>
 
 <div id="loader">
     <svg xmlns="http://www.w3.org/2000/svg"
@@ -85,6 +99,12 @@
         if (loader) {
             loader.style.display = "none";
         }
+
+        // 🔥 ПРОВЕРКА: Все ли JS-файлы загрузились?
+        console.log("✅ serial.js loaded:", typeof SerialConnection !== 'undefined');
+        console.log("✅ modbus.js loaded:", typeof ModbusParser !== 'undefined');
+        console.log("✅ ringBuffer.js loaded:", typeof RingBuffer !== 'undefined');
+        console.log("✅ pixi_oscillo.js loaded:", typeof oscilloInit !== 'undefined');
     });
 </script>
 

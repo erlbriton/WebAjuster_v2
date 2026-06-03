@@ -43,7 +43,7 @@ window.runModbusTest = async function(dataArray, expectedBytes) {
 
                     // Жесткий контроль времени сбора пакета
                     while (responseBuffer.length < expectedBytes) {
-                        if (performance.now() - startTime > 300) throw new Error("Link Timeout");
+                        if (performance.now() - startTime > 5000) throw new Error("Link Timeout");
 
                         const { value, done } = await reader.read();
                         if (done) throw new Error("Port Closed");
