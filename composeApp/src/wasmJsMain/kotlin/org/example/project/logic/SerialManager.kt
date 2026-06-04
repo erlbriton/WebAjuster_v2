@@ -1,6 +1,7 @@
 package org.example.project.logic
 
 import org.example.project.utils.SerialEngine
+import org.example.project.jsinterop.jsOscilloPush
 
 // === ШАГ 1: ИСПРАВЛЕННЫЙ ВАРИАНТ JS ДЛЯ WEBPACK (Используем самовызывающуюся функцию) ===
 fun getBrowserCurrentPortName(): String =
@@ -69,4 +70,8 @@ actual suspend fun readDeviceIdentification() {
     } else {
         println("❌ Ошибка: Буфер пуст или превышен таймаут ответа.")
     }
+    println("🟢 Вызываю jsOscilloPush(777)...")
+    jsOscilloPush("testId", 220.0, 0.0, 1000.0)
+    println("✅ jsOscilloPush завершён")
+    jsOscilloPush("testId", 880.0, 0.0, 1000.0)  // ← ОДНА СТРОКА
 }

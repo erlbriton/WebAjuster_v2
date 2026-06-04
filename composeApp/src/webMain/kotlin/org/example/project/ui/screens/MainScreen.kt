@@ -36,34 +36,43 @@ fun MainScreen() {
     // ШАГ 51: ОСТАВЛЯЕМ ВОРКЕР КАК ПРОСТОЙ ТРИГГЕР
     // ==========================================
     LaunchedEffect(Unit) {
-        // 🔥 ТЕСТ МОСТА
-        testJsBridge()
-        checkJsClasses()
-
-        // 🔥 ИНИЦИАЛИЗАЦИЯ ОСЦИЛЛОГРАФА
+        // 🔥 ИНИЦИАЛИЗАЦИЯ ОСЦИЛЛОГРАФА (один раз при старте)
+        println("🔵 jsOscilloCreate...")
         jsOscilloCreate("oscCanvas", "testOscillo")
-        jsOscilloInit("p002D", "oscCanvas", 0.0, 1100.0)
 
-        // 🔥 ОТКРЫТИЕ ПОРТА (упрощённо — без await, так как js() не поддерживает suspend напрямую)
-        println("🔌 Opening port...")
+        println("🔵 jsOscilloInit...")
+        jsOscilloInit("testId", "oscCanvas", 0.0, 1000.0)
 
-        // 🔥 ЦИКЛ ЧТЕНИЯ ДАННЫХ
-        var lastValue = 0f
-        while (true) {
-            // 🔥 Читаем значение через топ-левел функцию (НЕ через inline js()!)
-            val value = getModbusValue().toFloat()
+        println("✅ Осциллограф инициализирован!")
 
-            // Push в осциллограф
-            jsOscilloPush("p002D", value.toDouble(), 0.0, 1100.0)
-
-            // Логируем при изменении
-            if (value != lastValue) {
-                println("📡 Value: $value")
-                lastValue = value
-            }
-
-            kotlinx.coroutines.delay(40) // 25 Гц
-        }
+        // 🔥 ТЕСТ МОСТА
+//        testJsBridge()
+//        checkJsClasses()
+//
+//        // 🔥 ИНИЦИАЛИЗАЦИЯ ОСЦИЛЛОГРАФА
+//        jsOscilloCreate("oscCanvas", "testOscillo")
+//        jsOscilloInit("p002D", "oscCanvas", 0.0, 1100.0)
+//
+//        // 🔥 ОТКРЫТИЕ ПОРТА (упрощённо — без await, так как js() не поддерживает suspend напрямую)
+//        println("🔌 Opening port...")
+//
+//        // 🔥 ЦИКЛ ЧТЕНИЯ ДАННЫХ
+//        var lastValue = 0f
+//        while (true) {
+//            // 🔥 Читаем значение через топ-левел функцию (НЕ через inline js()!)
+//            val value = getModbusValue().toFloat()
+//
+//            // Push в осциллограф
+//            jsOscilloPush("p002D", value.toDouble(), 0.0, 1100.0)
+//
+//            // Логируем при изменении
+//            if (value != lastValue) {
+//                println("📡 Value: $value")
+//                lastValue = value
+//            }
+//
+//            kotlinx.coroutines.delay(40) // 25 Гц
+//        }
     }
     // ==========================================
 

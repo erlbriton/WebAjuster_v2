@@ -9,7 +9,9 @@ import org.example.project.utils.pickSingleFile
 import org.example.project.viewmodels.MainViewModel
 
 import androidx.compose.foundation.clickable
-
+import org.example.project.jsinterop.jsOscilloCreate
+import org.example.project.jsinterop.jsOscilloInit
+import org.example.project.jsinterop.jsOscilloPush
 
 
 class HeaderActionsButtons(
@@ -44,8 +46,22 @@ class HeaderActionsButtons(
     }
 
     override fun onFileOration() {
+        println("🔴 onFileOration() вызвана!")  // ← Проверим, вызывается ли
+
         scope.launch {
+            println("🔵 Запускаю readDeviceIdentification()...")
             readDeviceIdentification()
+
+            println("🟢 Вызываю jsOscilloCreate...")
+            jsOscilloCreate("oscCanvas", "testOscillo")
+
+            println("🟢 Вызываю jsOscilloInit...")
+            jsOscilloInit("testId", "oscCanvas", 0.0, 1000.0)
+
+            println("🟢 Вызываю jsOscilloPush(777)...")
+            jsOscilloPush("testId", 777.0, 0.0, 1000.0)
+
+            println("✅ Готово!")
         }
     }
 
