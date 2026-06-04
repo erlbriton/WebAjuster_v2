@@ -1,129 +1,58 @@
-﻿const SLAVE_ADDRESS=0x01;
-const REGISTER_ADDR=0x002D;
+﻿const scopeWorker = new Worker('scope_worker.js');
+let port, writer, reader;
 
-let serial, parser;
-let lastPacketTime=0;
-let packetCount=0;
-let isConnected=false;
+window.connectToDevice = async function() {
+    try {
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 115200 });
+        console.log('[Main] ✅ Порт открыт');
 
-window.connectToDevice=async function(){
-    try{
-        if(isConnected){
-            console.log("[Main] Already connected");
-            return;
-        }
+        const canvas = document.getElementById('oscCanvas');
+        const offscreen = canvas.transferControlToOffscreen();
+        scopeWorker.postMessage({ type: 'init', canvas: offscreen }, [offscreen]);
 
-        // 🔥 ИНИЦИАЛИЗАЦИЯ КАНАЛОВ
-        if(window.oscilloInit){
-            window.oscilloInit("testId", "oscCanvas", 0, 1100);
-            window.oscilloInit("testId2", "oscCanvas", 0, 1100);
-            console.log("[Main] Channels initialized!");
-        }
-
-        serial=new SerialConnection();
-        parser=new ModbusParser();
-
-        console.log("[Main] Connecting...");
-        await serial.connect(115200);
-        console.log("[Main] Connected!");
-
-        isConnected=true;
-        lastPacketTime=performance.now();
-        packetCount=0;
-
-        readLoop();
-        writeLoop();
-    }catch(error){
-        console.error("[Main] Error:",error.message);
-        alert(error.message);
+        startSerial();
+    } catch (err) {
+        console.error('[Main] ❌', err.message);
     }
 };
 
-async function readLoop(){
-    console.log("[Main] readLoop started");
-    try{
-        while(isConnected){
-            const chunk=await serial.readChunk();
-            if(!chunk)break;
+async function startSerial() {
+    writer = port.writable.getWriter();
+    reader = port.readable.getReader();
+    let buf = [];
 
-            parser.appendData(chunk);
-            let packetData=parser.parsePacket();
-
-            while(packetData!==null){
-                handleValidPacket(packetData);
-                packetData=parser.parsePacket();
-            }
+    // Запускаем опрос и чтение
+    (async () => {
+        while (port) {
+            const body = new Uint8Array([0x01, 0x03, 0x00, 0x2D, 0x00, 0x02]);
+            let crc = 0xFFFF;
+            for (let b of body) { crc ^= b; for (let i = 0; i < 8; i++) crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : crc >> 1; }
+            await writer.write(new Uint8Array([...body, crc & 0xFF, (crc >> 8) & 0xFF]));
+            await new Promise(r => setTimeout(r, 5));
         }
-    }catch(error){
-        console.error("[Main] readLoop error:",error.message);
-    }
-}
+    })();
 
-async function writeLoop(){
-    console.log("[Main] writeLoop started");
-    while(isConnected){
-        try{
-            const body=new Uint8Array([
-                SLAVE_ADDRESS,
-                0x03,
-                (REGISTER_ADDR>>8)&0xFF,
-                REGISTER_ADDR&0xFF,
-                0x00,
-                0x02
-            ]);
-
-            let crc=0xFFFF;
-            for(let pos=0;pos<body.length;pos++){
-                crc^=body[pos];
-                for(let i=8;i!==0;i--){
-                    if((crc&0x0001)!==0){
-                        crc>>=1;
-                        crc^=0xA001;
-                    }else{
-                        crc>>=1;
+    (async () => {
+        while (port) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            if (value) buf.push(...value);
+            while (buf.length >= 9) {
+                if (buf[0] === 0x01 && buf[1] === 0x03 && buf[2] === 0x04) {
+                    let crc = 0xFFFF;
+                    for (let i = 0; i < 7; i++) { crc ^= buf[i]; for (let j = 0; j < 8; j++) crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : crc >> 1; }
+                    if (crc === (buf[7] | (buf[8] << 8))) {
+                        const v1 = (buf[3] << 8) | buf[4];
+                        const v2 = (buf[5] << 8) | buf[6];
+                        // 🔥 Передаём данные в Worker
+                        scopeWorker.postMessage({ type: 'data', v1, v2, t: performance.now() });
                     }
-                }
+                    buf.splice(0, 9);
+                } else buf.shift();
             }
-
-            const finalPacket=new Uint8Array(8);
-            finalPacket.set(body,0);
-            finalPacket[6]=crc&0xFF;
-            finalPacket[7]=(crc>>8)&0xFF;
-
-            await serial.write(finalPacket);
-        }catch(error){
-            console.error("[Main] writeLoop error:",error.message);
         }
-
-        await new Promise(res=>setTimeout(res,5)); // 5ms для плавности на Windows
-    }
+    })();
 }
 
-function handleValidPacket(packetData){
-    const currentTime=performance.now();
-    const interval=currentTime-lastPacketTime;
-    lastPacketTime=currentTime;
-    packetCount++;
-
-    let val1=Array.isArray(packetData)?packetData[0]:packetData;
-    let val2=Array.isArray(packetData)?packetData[1]:packetData;
-
-    if(packetCount>1 && packetCount%10===0){
-        console.log(`[Main] R1:${val1} R2:${val2}`);
-    }
-
-    // 🔥 ЛОГИРОВАНИЕ (добавить это!)
-    console.log(`[Main] Push: testId=${val1}, testId2=${val2}`);
-    console.log(`[Main] window.oscilloPush exists: ${typeof window.oscilloPush !== 'undefined'}`);
-
-    // Отправляем в осциллограф
-    if(window.oscilloPush){
-        window.oscilloPush("testId",val1,0,1100);
-        window.oscilloPush("testId2",val2,0,1100);
-        console.log(`[Main] oscilloPush called!`);
-    } else {
-        console.error(`[Main] oscilloPush NOT FOUND!`);
-    }
-}
-
-console.log("[Main] main.js LOADED OK");
+console.log('[Main] main.js LOADED OK');
