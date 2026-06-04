@@ -37,14 +37,14 @@ fun MainScreen() {
     // ==========================================
     LaunchedEffect(Unit) {
         // 🔥 ИНИЦИАЛИЗАЦИЯ ОСЦИЛЛОГРАФА (один раз при старте)
-        println("🔵 jsOscilloCreate...")
-        jsOscilloCreate("oscCanvas", "testOscillo")
-
-        println("🔵 jsOscilloInit...")
-        jsOscilloInit("testId", "oscCanvas", 0.0, 1000.0)
-        //jsOscilloInit("testId2", "oscCanvas", 0.0, 1000.0)
-
-        println("✅ Осциллограф инициализирован!")
+//        println("🔵 jsOscilloCreate...")
+//        jsOscilloCreate("oscCanvas", "testOscillo")
+//
+//        println("🔵 jsOscilloInit...")
+//        jsOscilloInit("testId", "oscCanvas", 0.0, 1000.0)
+//        //jsOscilloInit("testId2", "oscCanvas", 0.0, 1000.0)
+//
+//        println("✅ Осциллограф инициализирован!")
 
         // 🔥 ТЕСТ МОСТА
 //        testJsBridge()

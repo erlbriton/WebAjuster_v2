@@ -44,6 +44,11 @@ import org.example.project.utils.UniversalSelector
 import org.example.project.utils.iconsMenu
 import org.example.project.viewmodels.LocalMainViewModel
 
+// Top-level функция-обёртка для вызова JS
+fun jsConnectToDevice() {
+    js("if (window.connectToDevice) window.connectToDevice()")
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HeaderTable(
@@ -415,9 +420,10 @@ fun HeaderTable(
                 tooltipText = "Получить ID устройства",
                 backgroundColor = Color(0xFFC2B7B7),
                 onClick = {
-                    scope.launch {
-                        readDeviceIdentification()
-                    }
+                 //   scope.launch {
+                       // readDeviceIdentification()
+                    jsConnectToDevice()
+                  //  }
                 }
             )
         } // Конец Row
