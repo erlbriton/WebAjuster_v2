@@ -1,71 +1,68 @@
-// Осциллограф через нативный Canvas 2D — без PixiJS, без CDN
-// Работает быстрее чем Compose Canvas на Windows из-за прямого доступа к GPU через браузер
+// === УМНЫЙ ДВИЖОК ОСЦИЛЛОГРАФА (Multi-Channel) ===
 
-window.oscilloData = {};
-window.oscilloApps = {};
+window.oscilloApps = {}; // Настройки каналов
+window.oscilloData = {}; // Данные каналов
 
-// Инициализация канваса для параметра
+// 1. Инициализация канала (вызывается один раз при старте)
 window.oscilloInit = function(code, canvasId, minVal, maxVal) {
     const canvas = document.getElementById(canvasId);
-    if (!canvas) {
-        console.warn('[Oscillo] Canvas not found: ' + canvasId);
-        return;
-    }
+    if (!canvas) return console.warn('[Oscillo] Canvas not found');
 
-    // Сохраняем контекст и настройки
+    // Запоминаем контекст и размеры для этого канала
     window.oscilloApps[code] = {
-        canvas: canvas,
         ctx: canvas.getContext('2d'),
+        width: canvas.width,
+        height: canvas.height,
         minVal: minVal,
-        maxVal: maxVal,
-        animFrame: null
+        maxVal: maxVal
     };
 
+    // Создаем пустой буфер
     if (!window.oscilloData[code]) {
         window.oscilloData[code] = [];
     }
-
-    console.log('[Oscillo] Initialized: ' + canvasId);
 };
 
-// Добавить новое значение и перерисовать
+// 2. Прием данных (вызывается из main.js постоянно)
 window.oscilloPush = function(code, value, minVal, maxVal) {
-    if (!window.oscilloData[code]) {
-        window.oscilloData[code] = [];
+    if (!window.oscilloData[code]) return;
+
+    // Сохраняем данные
+    window.oscilloData[code].push(value);
+    if (window.oscilloData[code].length > 300) {
+        window.oscilloData[code].shift(); // Храним только последние 300 точек
     }
 
-    const buf = window.oscilloData[code];
-    buf.push(value);
-    if (buf.length > 300) buf.shift();
-
-    const app = window.oscilloApps[code];
-    if (!app || !app.ctx) return;
-
-    // Отменяем предыдущий кадр если не успел отрисоваться
-    if (app.animFrame) {
-        cancelAnimationFrame(app.animFrame);
+    // Обновляем настройки масштаба, если они пришли
+    if (minVal !== undefined && maxVal !== undefined) {
+        if (window.oscilloApps[code]) {
+            window.oscilloApps[code].minVal = minVal;
+            window.oscilloApps[code].maxVal = maxVal;
+        }
     }
 
-    // Рисуем в следующем кадре — браузер сам выберет лучший момент
-    app.animFrame = requestAnimationFrame(function() {
-        window.oscilloDraw(code, minVal, maxVal);
-        app.animFrame = null;
-    });
+    // 🔥 ЗАПУСКАЕМ ОТРИСОВКУ (не чаще 1 раза за кадр)
+    if (!window._isDrawing) {
+        window._isDrawing = true;
+        requestAnimationFrame(() => {
+            _drawAll();
+            window._isDrawing = false;
+        });
+    }
 };
 
-// Отрисовка через нативный Canvas 2D
-window.oscilloDraw = function(code, minVal, maxVal) {
-    const app = window.oscilloApps[code];
-    const data = window.oscilloData[code];
-    if (!app || !app.ctx || !data || data.length < 2) return;
+// 3. Секретная функция: Рисует ВСЕ каналы за один проход
+function _drawAll() {
+    const codes = Object.keys(window.oscilloApps);
+    if (codes.length === 0) return;
 
-    const canvas = app.canvas;
-    const ctx = app.ctx;
-    const w = canvas.width;
-    const h = canvas.height;
-    const range = (maxVal - minVal) || 1;
+    // Берем настройки из первого канала
+    const mainApp = window.oscilloApps[codes[0]];
+    const ctx = mainApp.ctx;
+    const w = mainApp.width;
+    const h = mainApp.height;
 
-    // Очищаем
+    // Очистка (ОДИН РАЗ для всех!)
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = '#FAFAFA';
     ctx.fillRect(0, 0, w, h);
@@ -74,76 +71,44 @@ window.oscilloDraw = function(code, minVal, maxVal) {
     ctx.strokeStyle = '#EBEBEB';
     ctx.lineWidth = 0.5;
     for (let x = 0; x < w; x += 40) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, h);
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
     }
     for (let y = 0; y < h; y += h/4) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    }
+
+    // Делим экран на зоны (если 2 канала — каждый займет 50% высоты)
+    const zoneHeight = h / codes.length;
+
+    codes.forEach((code, index) => {
+        const data = window.oscilloData[code];
+        const cfg = window.oscilloApps[code];
+
+        if (!data || data.length < 2) return;
+
+        // Центр зоны для этого графика
+        const centerY = (index * zoneHeight) + (zoneHeight / 2);
+        const range = cfg.maxVal - cfg.minVal;
+        const scaleY = (zoneHeight / 2) / (range || 1);
+
+        // Цвет линии
+        ctx.strokeStyle = index === 0 ? '#4A90E2' : '#E24A4A';
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(w, y);
-        ctx.stroke();
-    }
 
-    // Линия сигнала
-    ctx.strokeStyle = '#4A90E2';
-    ctx.lineWidth = 1.5;
-    ctx.lineJoin = 'round';
-    ctx.beginPath();
+        const stepX = w / (data.length - 1);
 
-    const stepX = w / (data.length - 1);
+        for (let i = 0; i < data.length; i++) {
+            const x = i * stepX;
+            // Расчет Y: значение отнимается от центра зоны
+            const val = (data[i] - cfg.minVal) * scaleY;
+            const y = centerY - val;
 
-    for (let i = 0; i < data.length; i++) {
-        const x = i * stepX;
-        const y = h - ((data[i] - minVal) / range) * h;
-        const yClamp = Math.max(0, Math.min(h, y));
-
-        if (i === 0) {
-            ctx.moveTo(x, yClamp);
-        } else {
-            ctx.lineTo(x, yClamp);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
         }
-    }
-    ctx.stroke();
-};
+        ctx.stroke();
+    });
+}
 
-// Создать canvas элемент в контейнере
-window.oscilloCreate = function(canvasId, containerId) {
-    if (document.getElementById(canvasId)) return;
-
-    const container = document.getElementById(containerId);
-    if (!container) {
-        console.warn('[Oscillo] Container not found: ' + containerId);
-        return;
-    }
-
-    const canvas = document.createElement('canvas');
-    canvas.id = canvasId;
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
-    canvas.style.display = 'block';
-
-    // Устанавливаем реальный размер canvas в пикселях
-    const rect = container.getBoundingClientRect();
-    canvas.width = rect.width > 0 ? rect.width : 400;
-    canvas.height = rect.height > 0 ? rect.height : 64;
-
-    container.appendChild(canvas);
-    console.log('[Oscillo] Created canvas: ' + canvasId + ' (' + canvas.width + 'x' + canvas.height + ')');
-};
-
-// Удалить canvas
-window.oscilloRemove = function(canvasId, code) {
-    const app = window.oscilloApps[code];
-    if (app && app.animFrame) {
-        cancelAnimationFrame(app.animFrame);
-    }
-    delete window.oscilloApps[code];
-    delete window.oscilloData[code];
-
-    const el = document.getElementById(canvasId);
-    if (el) el.remove();
-};
-
-console.log('[Oscillo] pixi_oscillo.js loaded');
+console.log('[Oscillo] Multi-channel engine ready');

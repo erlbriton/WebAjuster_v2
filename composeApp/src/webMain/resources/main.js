@@ -119,7 +119,7 @@ function handleValidPacket(packetData){
     // Отправляем в осциллограф
     if(window.oscilloPush){
         window.oscilloPush("testId",val1,0,1100);
-        //window.oscilloPush("testId2",val2,0,1100);
+        window.oscilloPush("testId2",val2,0,1100);
         console.log(`[Main] oscilloPush called!`);
     } else {
         console.error(`[Main] oscilloPush NOT FOUND!`);
