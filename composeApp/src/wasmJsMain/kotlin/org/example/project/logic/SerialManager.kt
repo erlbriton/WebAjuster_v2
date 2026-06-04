@@ -70,36 +70,39 @@ actual suspend fun readDeviceIdentification() {
     } else {
         println("❌ Ошибка: Буфер пуст или превышен таймаут ответа.")
     }
-    println("🟢 Вызываю jsOscilloPush(777)...")
-    jsOscilloPush("testId", 220.0, 0.0, 1000.0)
-    println("✅ jsOscilloPush завершён")
-    jsOscilloPush("testId", 880.0, 0.0, 1000.0)  // ← ОДНА СТРОКА
+    // Вызываем чтение регистра 0x002D и отправку в осциллограф
+    readRegister002D()
 }
 
+
 actual suspend fun readRegister002D() {
-    // Команда 0x03: чтение 2 регистров начиная с 0x002D
-    val rawPacket = byteArrayOf(
-        0x01,        // Адрес устройства
-        0x03,        // Функция чтения holding registers
-        0x00, 0x2D,  // Адрес регистра 0x002D
-        0x00, 0x02   // Читаем 2 регистра
-    )
+    println("🔴 readRegister002D() вызвана!")
 
-    val fullPacket = ModbusUtils.appendCRC(rawPacket)
+    try {
+        val rawPacket = byteArrayOf(0x01, 0x03, 0x00, 0x2D, 0x00, 0x02)
+        val fullPacket = ModbusUtils.appendCRC(rawPacket)
 
-    // Ответ: адрес(1) + функция(1) + длина(1) + данные(4) + CRC(2) = 9 байт
-    val response = SerialEngine.transceive(fullPacket, 9)
+        println("🔴 Запускаю цикл опроса...")
 
-    if (response != null && response.size >= 7) {
-        val reg1 = ((response[3].toInt() and 0xFF) shl 8) or (response[4].toInt() and 0xFF)
-        val reg2 = ((response[5].toInt() and 0xFF) shl 8) or (response[6].toInt() and 0xFF)
+        while (true) {
+            println("🔴 Отправляю запрос...")
+            val response = SerialEngine.transceive(fullPacket, 9)
 
-        println("📊 Регистр 0x002D: reg1=$reg1, reg2=$reg2")
+            if (response != null && response.size >= 7) {
+                val reg1 = ((response[3].toInt() and 0xFF) shl 8) or (response[4].toInt() and 0xFF)
+                val reg2 = ((response[5].toInt() and 0xFF) shl 8) or (response[6].toInt() and 0xFF)
 
-        // Отправляем в осциллограф
-        jsOscilloPush("testId", reg1.toDouble().coerceIn(0.0, 1000.0), 0.0, 1000.0)
-        jsOscilloPush("testId", reg2.toDouble().coerceIn(0.0, 1000.0), 0.0, 1000.0)
-    } else {
-        println("❌ Ошибка чтения регистра 0x002D")
+                println("📊 Регистр 0x002D: reg1=$reg1, reg2=$reg2")
+
+                jsOscilloPush("testId", reg1.toDouble().coerceIn(0.0, 1000.0), 0.0, 1000.0)
+                jsOscilloPush("testId2", reg2.toDouble().coerceIn(0.0, 1000.0), 0.0, 1000.0)
+            } else {
+                println("❌ Ошибка чтения регистра 0x002D")
+            }
+
+            kotlinx.coroutines.delay(40)
+        }
+    } catch (e: Exception) {
+        println("❌ КРИТИЧЕСКАЯ ОШИБКА В readRegister002D: ${e.message}")
     }
 }

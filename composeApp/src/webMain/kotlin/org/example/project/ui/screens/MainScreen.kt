@@ -42,6 +42,7 @@ fun MainScreen() {
 
         println("🔵 jsOscilloInit...")
         jsOscilloInit("testId", "oscCanvas", 0.0, 1000.0)
+        //jsOscilloInit("testId2", "oscCanvas", 0.0, 1000.0)
 
         println("✅ Осциллограф инициализирован!")
 
