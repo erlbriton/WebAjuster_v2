@@ -243,9 +243,33 @@ class MainViewModel {
 
     fun sendParametersToJS() {
         try {
+            val device = currentDeviceState.value
+
+            if (device == null) {
+                println("ОШИБКА: currentDeviceState.value равен null")
+                return
+            }
+
+            println("=== ДИАГНОСТИКА RAM ===")
+            println("Всего параметров в Flash: ${device.flashParameters.size}")
+            println("Всего параметров в RAM: ${device.ramParameters.size}")
+            println("Всего параметров в CD: ${device.cdParameters.size}")
+
+            val ramParams = device.ramParameters
+
+            if (ramParams.isEmpty()) {
+                println("ОШИБКА: список RAM-параметров пуст!")
+                return
+            }
+
+            println("Первые 5 RAM-параметров:")
+            ramParams.take(5).forEachIndexed { index, param ->
+                println("  [$index] name='${param.idName}', register='${param.modbusReg}', unit='${param.unit}'")
+            }
+
             val jsonParts = mutableListOf<String>()
 
-            for (param in parameters) {
+            for (param in ramParams) {
                 val isDisc = param.type == ParameterType.TBit
                 val name = param.idName.replace("\"", "'")
                 val unit = param.unit.replace("\"", "'")
@@ -257,10 +281,14 @@ class MainViewModel {
 
             val json = "[" + jsonParts.joinToString(",") + "]"
 
+            println("Отправляю JSON длиной ${json.length} символов")
+            println("Первые 200 символов JSON: ${json.take(200)}")
+
             callJsBuildLeftPanel(json)
-            println("Отправлено ${parameters.size} параметров в левую панель")
+            println("Успешно отправлено ${ramParams.size} RAM-параметров в левую панель")
         } catch (e: Exception) {
-            println("Ошибка отправки в JS: ${e.message}")
+            println("КРИТИЧЕСКАЯ ОШИБКА отправки в JS: ${e.message}")
+            e.printStackTrace()
         }
     }
 

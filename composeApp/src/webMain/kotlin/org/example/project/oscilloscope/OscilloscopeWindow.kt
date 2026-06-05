@@ -16,14 +16,15 @@ fun OscilloscopeWindow(
     // При открытии окна осциллографа даем команду JS запустить высокоскоростной опрос.
     // Передаем массив нужных регистров (например, первые 5 регистров) и скорость порта.
     DisposableEffect(Unit) {
-        val targetRegisters = intArrayOf(0, 1, 2, 3, 4) // Список регистров для опроса
+        // 1. Запуск опроса регистров
+        val targetRegisters = intArrayOf(0, 1, 2, 3, 4)
         val baudRate = 115200
-
         viewModel.startJsOscilloscope(targetRegisters, baudRate)
 
+        // 2. НОВОЕ: Передаём параметры в JS для построения левой панели
+        viewModel.sendParametersToJS()
+
         onDispose {
-            // Как только пользователь закрывает вкладку/окно осциллографа —
-            // мгновенно глушим опрос в JS, чтобы освободить порт для общей таблицы
             viewModel.stopJsOscilloscope()
         }
     }

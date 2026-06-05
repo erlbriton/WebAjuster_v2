@@ -3,113 +3,88 @@
 class LeftPanel {
     constructor() {
         this.params = [];
-        this.canvasWorkers = {};
         this.rowHeight = 25;
+        console.log('[LeftPanel] Конструктор создан');
     }
 
-    // Парсинг ini-файла
-    parseIniFile(text) {
-        const sections = {};
-        let currentSection = null;
+    // Построение таблицы из JSON, полученного от Kotlin
+    buildFromJSON(jsonStr) {
+        try {
+            const params = JSON.parse(jsonStr);
+            console.log('[LeftPanel] Получено параметров из Kotlin: ' + params.length);
 
-        const lines = text.split('\n');
-        for (let line of lines) {
-            line = line.trim();
-            if (!line || line.startsWith(';')) continue;
-
-            if (line.startsWith('[') && line.endsWith(']')) {
-                currentSection = line.slice(1, -1);
-                sections[currentSection] = {};
-                continue;
+            if (params.length === 0) {
+                console.warn('[LeftPanel] Список параметров пуст');
+                return;
             }
 
-            if (currentSection && line.includes('=')) {
-                const [key, ...valueParts] = line.split('=');
-                sections[currentSection][key.trim()] = valueParts.join('=').trim();
+            const table = document.getElementById('paramsTable');
+            if (!table) {
+                console.error('[LeftPanel] Элемент paramsTable не найден в DOM');
+                return;
             }
-        }
 
-        return sections;
+            // Очищаем таблицу перед построением
+            table.innerHTML = '';
+            this.params = params;
+
+            // Создаём строку для каждого параметра
+            params.forEach((param, index) => {
+                const row = this.createRow(param, index);
+                table.appendChild(row);
+            });
+
+            console.log('[LeftPanel] Таблица построена, строк: ' + params.length);
+
+        } catch (error) {
+            console.error('[LeftPanel] Ошибка построения таблицы:', error);
+            console.error(error.stack);
+        }
     }
 
-    // Парсинг параметров из секции [RAM]
-    parseParams(ramSection) {
-        const params = [];
-
-        for (let [key, value] of Object.entries(ramSection)) {
-            const parts = value.split('/');
-            if (parts.length < 8) continue;
-
-            const param = {
-                id: key,
-                name: parts[0],
-                description: parts[1],
-                type: parts[2],
-                address: parts[3],
-                register: parts[4],
-                unit: parts[5],
-                scale: parseFloat(parts[6].replace(',', '.')) || 1,
-                size: parseInt(parts[7]) || 2,
-                flags: parts[8] || '0',
-                isDiscrete: parts[2] === 'TBit'
-            };
-
-            params.push(param);
-        }
-
-        return params;
-    }
-
-    // Создание строки таблицы
+    // Создание одной строки таблицы
     createRow(param, index) {
         const row = document.createElement('div');
-        row.id = `param-row-${index}`;
-        row.style.cssText = `
-            display: grid;
-            grid-template-columns: 150px 100px 100px 60px 1fr;
-            border-bottom: 1px solid #eee;
-            align-items: center;
-            font-size: 12px;
-            font-family: monospace;
-            height: ${this.rowHeight}px;
-        `;
+        row.id = 'param-row-' + index;
+        row.style.cssText = [
+            'display: grid',
+            'grid-template-columns: 150px 100px 100px 60px 1fr',
+            'border-bottom: 1px solid #eee',
+            'align-items: center',
+            'font-size: 12px',
+            'font-family: monospace',
+            'height: ' + this.rowHeight + 'px'
+        ].join(';');
 
         // Колонка 1: Имя
         const nameCell = document.createElement('div');
         nameCell.textContent = param.name;
-        nameCell.style.padding = '5px';
-        nameCell.style.cursor = 'pointer';
-        nameCell.title = param.description;
+        nameCell.style.cssText = 'padding: 5px; cursor: pointer;';
 
         // Колонка 2: Hex
         const hexCell = document.createElement('div');
-        hexCell.id = `hex-${index}`;
-        hexCell.style.padding = '5px';
-        hexCell.style.color = '#666';
+        hexCell.id = 'hex-' + index;
+        hexCell.style.cssText = 'padding: 5px; color: #666;';
 
         // Колонка 3: Physical
         const physCell = document.createElement('div');
-        physCell.id = `phys-${index}`;
-        physCell.style.padding = '5px';
-        physCell.style.fontWeight = 'bold';
+        physCell.id = 'phys-' + index;
+        physCell.style.cssText = 'padding: 5px; font-weight: bold;';
 
         // Колонка 4: Unit
         const unitCell = document.createElement('div');
         unitCell.textContent = param.unit;
-        unitCell.style.padding = '5px';
-        unitCell.style.color = '#666';
+        unitCell.style.cssText = 'padding: 5px; color: #666;';
 
         // Колонка 5: Canvas для графика
         const graphCell = document.createElement('div');
-        graphCell.style.position = 'relative';
-        graphCell.style.height = `${this.rowHeight}px`;
+        graphCell.style.cssText = 'position: relative; height: ' + this.rowHeight + 'px;';
 
         const canvas = document.createElement('canvas');
-        canvas.id = `canvas-${index}`;
+        canvas.id = 'canvas-' + index;
         canvas.width = 300;
         canvas.height = this.rowHeight;
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
+        canvas.style.cssText = 'width: 100%; height: 100%;';
         canvas.style.background = param.isDiscrete ? '#f9f9f9' : '#fff';
 
         graphCell.appendChild(canvas);
@@ -121,64 +96,52 @@ class LeftPanel {
         row.appendChild(unitCell);
         row.appendChild(graphCell);
 
-        // Клик для изменения высоты (для аналоговых)
+        // Клик по имени для изменения высоты (только для аналоговых)
         if (!param.isDiscrete) {
             nameCell.addEventListener('click', () => {
-                this.toggleRowHeight(index, param.isDiscrete);
+                this.toggleRowHeight(index);
             });
         }
 
         return row;
     }
 
-    // Изменение высоты строки
-    toggleRowHeight(index, isDiscrete) {
-        if (isDiscrete) return;
+    // Переключение высоты строки: 25 -> 100 -> 200 -> 25
+    toggleRowHeight(index) {
+        const row = document.getElementById('param-row-' + index);
+        const canvas = document.getElementById('canvas-' + index);
 
-        const row = document.getElementById(`param-row-${index}`);
-        const canvas = document.getElementById(`canvas-${index}`);
+        if (!row || !canvas) return;
 
         const currentHeight = parseInt(row.style.height) || this.rowHeight;
-        const newHeight = currentHeight < 100 ? 100 : (currentHeight < 200 ? 200 : this.rowHeight);
+        let newHeight;
+        if (currentHeight < 100) newHeight = 100;
+        else if (currentHeight < 200) newHeight = 200;
+        else newHeight = this.rowHeight;
 
-        row.style.height = `${newHeight}px`;
+        row.style.height = newHeight + 'px';
         canvas.height = newHeight;
-    }
 
-    // Обновление значения параметра
-    updateValue(index, hexValue, physicalValue) {
-        const hexCell = document.getElementById(`hex-${index}`);
-        const physCell = document.getElementById(`phys-${index}`);
-
-        if (hexCell) hexCell.textContent = '0x' + hexValue.toString(16).toUpperCase().padStart(4, '0');
-        if (physCell) physCell.textContent = physicalValue.toFixed(2);
-    }
-
-    // Инициализация панели
-    async init(iniFilePath) {
-        try {
-            const response = await fetch(iniFilePath);
-            const text = await response.text();
-            const ini = this.parseIniFile(text);
-
-            this.params = this.parseParams(ini['RAM'] || {});
-
-            console.log(`Загружено ${this.params.length} параметров`);
-
-            const table = document.getElementById('paramsTable');
-            table.innerHTML = '';
-
-            this.params.forEach((param, index) => {
-                const row = this.createRow(param, index);
-                table.appendChild(row);
-            });
-
-        } catch (error) {
-            console.error('Ошибка инициализации левой панели:', error);
-        }
+        console.log('[LeftPanel] Высота строки ' + index + ' изменена на ' + newHeight + 'px');
     }
 }
 
 // Создаём глобальный экземпляр
 window.leftPanel = new LeftPanel();
-console.log('LeftPanel module loaded');
+
+// Глобальная функция, которую Kotlin вызывает через @JsFun
+window.buildLeftPanel = function(jsonStr) {
+    console.log('=== buildLeftPanel ВЫЗВАНА! ===');
+    console.log('Длина JSON: ' + jsonStr.length);
+    console.log('Содержимое JSON: ' + jsonStr.substring(0, 200));
+
+    try {
+        window.leftPanel.buildFromJSON(jsonStr);
+        console.log('=== buildLeftPanel успешно завершена ===');
+    } catch (error) {
+        console.error('=== ОШИБКА в buildLeftPanel ===', error);
+        console.error(error.stack);
+    }
+};
+
+console.log('[LeftPanel] Module loaded, buildLeftPanel зарегистрирована');

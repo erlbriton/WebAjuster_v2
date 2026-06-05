@@ -29,19 +29,14 @@ fun OscilloscopeRightWindow(
     isSelected: Boolean,
     modifier: Modifier = Modifier
 ) {
-    // Вызываем JS для показа новой HTML-панели
     DisposableEffect(Unit) {
         callJsShowLeftPanel()
-
-        // Передаём параметры из Kotlin в JS для построения таблицы
-        viewModel.sendParametersToJS()
 
         onDispose {
             callJsHideLeftPanel()
         }
     }
 
-    // Пустой Box (занимает место, но невидим)
     Box(
         modifier = modifier
             .fillMaxSize()
