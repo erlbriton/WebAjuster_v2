@@ -2,13 +2,26 @@
 
 package org.example.project.oscilloscope
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.lifecycle.viewmodel.compose.viewModel
+
+// ====================================================================
+// JS-МОСТ ДЛЯ УПРАВЛЕНИЯ ЛЕВОЙ ПАНЕЛЬЮ
+// ====================================================================
+
+@JsFun("() => { if (window.showLeftPanel) window.showLeftPanel(); }")
+external fun callJsShowLeftPanel()
+
+@JsFun("() => { if (window.hideLeftPanel) window.hideLeftPanel(); }")
+external fun callJsHideLeftPanel()
+
+// ====================================================================
 
 @Composable
 fun OscilloscopeRightWindow(
@@ -16,12 +29,22 @@ fun OscilloscopeRightWindow(
     isSelected: Boolean,
     modifier: Modifier = Modifier
 ) {
-    // Чистый Compose Box. Он рендерится внутри того же Canvas, что и всё приложение.
-    // Он физически не может вызвать артефакты или перекрыть Хедер,
-    // потому что подчиняется правилам отрисовки Compose.
+    // Вызываем JS для показа новой HTML-панели
+    DisposableEffect(Unit) {
+        callJsShowLeftPanel()
+
+        // Передаём параметры из Kotlin в JS для построения таблицы
+        viewModel.sendParametersToJS()
+
+        onDispose {
+            callJsHideLeftPanel()
+        }
+    }
+
+    // Пустой Box (занимает место, но невидим)
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF1A1A1A)) // Наш темный фон осциллографа
+            .background(Color.Transparent)
     )
 }

@@ -10,6 +10,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.example.project.logic.ModbusRepository
 import org.example.project.logic.ParamConverter
+import org.example.project.models.ParameterType
 
 // ====================================================================
 // ИНТЕРФЕЙСНЫЙ МОСТ МЕЖДУ KOTLIN И JAVASCRIPT (Wasm-совместимый)
@@ -23,6 +24,8 @@ external fun callJsOscilloStart(registersStr: String, baudRate: Int)
 @JsFun("() => { if (window.oscilloStop) window.oscilloStop(); }")
 external fun callJsOscilloStop()
 
+@JsFun("(jsonStr) => { if (window.buildLeftPanel) window.buildLeftPanel(jsonStr); }")
+external fun callJsBuildLeftPanel(jsonStr: String)
 
 class MainViewModel {
     var currentVarsMap = mapOf<String, Double>()
@@ -237,6 +240,30 @@ class MainViewModel {
             }
         }
     }
+
+    fun sendParametersToJS() {
+        try {
+            val jsonParts = mutableListOf<String>()
+
+            for (param in parameters) {
+                val isDisc = param.type == ParameterType.TBit
+                val name = param.idName.replace("\"", "'")
+                val unit = param.unit.replace("\"", "'")
+                val reg = param.modbusReg.replace("\"", "'")
+
+                val jsonPart = "{\"name\":\"$name\",\"register\":\"$reg\",\"unit\":\"$unit\",\"scale\":${param.vars},\"isDiscrete\":$isDisc}"
+                jsonParts.add(jsonPart)
+            }
+
+            val json = "[" + jsonParts.joinToString(",") + "]"
+
+            callJsBuildLeftPanel(json)
+            println("Отправлено ${parameters.size} параметров в левую панель")
+        } catch (e: Exception) {
+            println("Ошибка отправки в JS: ${e.message}")
+        }
+    }
+
 }
 
 val LocalMainViewModel = staticCompositionLocalOf<MainViewModel> {

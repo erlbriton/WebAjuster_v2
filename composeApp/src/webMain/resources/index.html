@@ -64,23 +64,74 @@
     });
 </script>
 
-<!-- ОСЦИЛЛОГРАФ -->
-<div id="testOscillo" style="
+<!-- Управление новой левой панелью -->
+<script>
+    // Показать левую панель
+    window.showLeftPanel = function() {
+        console.log('showLeftPanel вызвана');
+        const panel = document.getElementById('leftPanel');
+        if (panel) {
+            panel.style.display = 'flex';
+        } else {
+            console.error('Панель leftPanel не найдена в DOM');
+        }
+    };
+
+    // Скрыть левую панель
+    window.hideLeftPanel = function() {
+        console.log('hideLeftPanel вызвана');
+        const panel = document.getElementById('leftPanel');
+        if (panel) {
+            panel.style.display = 'none';
+        }
+    };
+
+    // Скрыть панель при загрузке страницы
+    window.addEventListener('load', () => {
+        const panel = document.getElementById('leftPanel');
+        if (panel) {
+            panel.style.display = 'none';
+        }
+    });
+</script>
+
+<!-- Левая панель мониторинга параметров -->
+<div id="leftPanel" style="
     position: fixed;
-    top: 10px;
     left: 10px;
-    width: 400px;
-    height: 200px;
-    z-index: 99999;
+    top: 10px;
+    width: 800px;
+    height: calc(100vh - 20px);
     background: white;
     border: 1px solid #ccc;
-    pointer-events: none;
-    transform: translateZ(0);
-    isolation: isolate;
-    contain: layout style paint;
+    display: none;
+    flex-direction: column;
+    z-index: 1000;
 ">
-    <canvas id="oscCanvas" width="400" height="200" style="display: block; width: 100%; height: 100%;"></canvas>
+    <!-- Шапка с кнопками -->
+    <div id="leftPanelHeader" style="
+        padding: 10px;
+        background: #f0f0f0;
+        border-bottom: 1px solid #ccc;
+        display: flex;
+        gap: 10px;
+    ">
+        <button id="btnStart" style="padding: 5px 15px;">СТАРТ</button>
+        <button id="btnStop" style="padding: 5px 15px;">СТОП</button>
+    </div>
+
+    <!-- Таблица параметров -->
+    <div id="paramsTable" style="
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+    ">
+        <!-- Сюда будут добавляться строки -->
+    </div>
 </div>
+
+<!-- Подключение скрипта левой панели -->
+<script src="left_panel.js"></script>
 
 </body>
 </html>
