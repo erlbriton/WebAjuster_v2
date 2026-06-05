@@ -124,6 +124,26 @@ class LeftPanel {
 
         console.log('[LeftPanel] Высота строки ' + index + ' изменена на ' + newHeight + 'px');
     }
+
+    // Обновление значений hex и physical для всех параметров
+    updateAllValues(jsonStr) {
+        try {
+            const updates = JSON.parse(jsonStr);
+
+            updates.forEach(update => {
+                const hexCell = document.getElementById('hex-' + update.index);
+                const physCell = document.getElementById('phys-' + update.index);
+
+                if (hexCell) hexCell.textContent = update.hex;
+                if (physCell) physCell.textContent = update.physical;
+            });
+
+            console.log('[LeftPanel] Обновлено значений: ' + updates.length);
+        } catch (error) {
+            console.error('[LeftPanel] Ошибка обновления значений:', error);
+        }
+    }
+
 }
 
 // Создаём глобальный экземпляр
@@ -143,5 +163,11 @@ window.buildLeftPanel = function(jsonStr) {
         console.error(error.stack);
     }
 };
+
+// Глобальная функция для обновления значений
+window.updateLeftPanelValues = function(jsonStr) {
+    window.leftPanel.updateAllValues(jsonStr);
+};
+
 
 console.log('[LeftPanel] Module loaded, buildLeftPanel зарегистрирована');

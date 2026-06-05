@@ -16,16 +16,21 @@ fun OscilloscopeWindow(
     // При открытии окна осциллографа даем команду JS запустить высокоскоростной опрос.
     // Передаем массив нужных регистров (например, первые 5 регистров) и скорость порта.
     DisposableEffect(Unit) {
-        // 1. Запуск опроса регистров
         val targetRegisters = intArrayOf(0, 1, 2, 3, 4)
         val baudRate = 115200
         viewModel.startJsOscilloscope(targetRegisters, baudRate)
 
-        // 2. НОВОЕ: Передаём параметры в JS для построения левой панели
         viewModel.sendParametersToJS()
+
+        // Запускаем периодическую отправку тестовых значений
+        val job = kotlinx.browser.window.setInterval({
+            viewModel.sendTestValuesToJS()
+            null as JsAny? // Возвращаем null, чтобы удовлетворить требование JsAny?
+        }, 1000) // Каждую секунду
 
         onDispose {
             viewModel.stopJsOscilloscope()
+            kotlinx.browser.window.clearInterval(job) // Останавливаем таймер
         }
     }
 
