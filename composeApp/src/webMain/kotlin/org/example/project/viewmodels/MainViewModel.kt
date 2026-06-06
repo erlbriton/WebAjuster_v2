@@ -306,7 +306,6 @@ class MainViewModel {
                 return
             }
 
-            // Генерируем тестовые данные
             val jsonParts = mutableListOf<String>()
             val random = kotlin.random.Random
 
@@ -317,11 +316,11 @@ class MainViewModel {
 
                 // Случайное число для physical (от 0 до 1000)
                 val physValue = random.nextDouble(0.0, 1000.0)
-                // Округляем до 2 знаков после запятой без format
                 val rounded = kotlin.math.round(physValue * 100) / 100.0
                 val testPhys = rounded.toString()
 
-                val jsonPart = """{"index":$index,"hex":"$testHex","physical":"$testPhys"}"""
+                // НОВОЕ: передаём числовое значение для графика
+                val jsonPart = """{"index":$index,"hex":"$testHex","physical":"$testPhys","value":$rounded}"""
                 jsonParts.add(jsonPart)
             }
 

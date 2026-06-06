@@ -4,6 +4,7 @@ class LeftPanel {
     constructor() {
         this.params = [];
         this.rowHeight = 25;
+        this.history = {};
         console.log('[LeftPanel] Конструктор создан');
     }
 
@@ -53,7 +54,8 @@ class LeftPanel {
             'align-items: center',
             'font-size: 12px',
             'font-family: monospace',
-            'height: ' + this.rowHeight + 'px'
+            'height: 60px'
+            //'height: ' + this.rowHeight + 'px'
         ].join(';');
 
         // Колонка 1: Имя
@@ -83,7 +85,8 @@ class LeftPanel {
         const canvas = document.createElement('canvas');
         canvas.id = 'canvas-' + index;
         canvas.width = 300;
-        canvas.height = this.rowHeight;
+        canvas.height = 60;
+        //canvas.height = this.rowHeight;
         canvas.style.cssText = 'width: 100%; height: 100%;';
         canvas.style.background = param.isDiscrete ? '#f9f9f9' : '#fff';
 
@@ -125,24 +128,114 @@ class LeftPanel {
         console.log('[LeftPanel] Высота строки ' + index + ' изменена на ' + newHeight + 'px');
     }
 
-    // Обновление значений hex и physical для всех параметров
-    updateAllValues(jsonStr) {
-        try {
-            const updates = JSON.parse(jsonStr);
+    // Отрисовка мини-графика для параметра
+    drawGraph(index) {
+        const canvas = document.getElementById('canvas-' + index);
+        if (!canvas) return;
 
-            updates.forEach(update => {
-                const hexCell = document.getElementById('hex-' + update.index);
-                const physCell = document.getElementById('phys-' + update.index);
+        const ctx = canvas.getContext('2d');
+        const history = this.history[index] || [];
 
-                if (hexCell) hexCell.textContent = update.hex;
-                if (physCell) physCell.textContent = update.physical;
-            });
+        if (history.length < 2) return; // Нужно минимум 2 точки
 
-            console.log('[LeftPanel] Обновлено значений: ' + updates.length);
-        } catch (error) {
-            console.error('[LeftPanel] Ошибка обновления значений:', error);
+        const width = canvas.width;
+        const height = canvas.height;
+
+        // Очищаем canvas
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, width, height);
+
+        // Находим min и max для масштабирования
+        const minVal = Math.min(...history);
+        const maxVal = Math.max(...history);
+        const range = maxVal - minVal || 1;
+
+        // Рисуем график
+        ctx.strokeStyle = '#4A90E2';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+
+        const stepX = width / (history.length - 1);
+        for (let i = 0; i < history.length; i++) {
+            const x = i * stepX;
+            // Нормализуем значение по высоте canvas (с отступом 5px)
+            const y = height - ((history[i] - minVal) / range) * (height - 10) - 5;
+
+            if (i === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
         }
+        ctx.stroke();
+
+        console.log('[LeftPanel] График для параметра ' + index + ' отрисован, точек: ' + history.length);
     }
+
+    // Обновление значений hex и physical для всех параметров
+   // Обновление значений hex и physical для всех параметров
+   updateAllValues(jsonStr) {
+       try {
+           const updates = JSON.parse(jsonStr);
+
+           updates.forEach(update => {
+               const hexCell = document.getElementById('hex-' + update.index);
+               const physCell = document.getElementById('phys-' + update.index);
+
+               if (hexCell) hexCell.textContent = update.hex;
+               if (physCell) physCell.textContent = update.physical;
+
+               // НОВОЕ: Сохраняем значение в историю
+               if (!this.history[update.index]) {
+                   this.history[update.index] = [];
+               }
+               this.history[update.index].push(update.value);
+
+               // Ограничиваем историю последними 100 точками
+               if (this.history[update.index].length > 100) {
+                   this.history[update.index].shift();
+               }
+
+               // НОВОЕ: Перерисовываем график
+               this.drawGraph(update.index);
+           });
+
+           console.log('[LeftPanel] Обновлено значений: ' + updates.length);
+       } catch (error) {
+           console.error('[LeftPanel] Ошибка обновления значений:', error);
+       }
+   }
+
+   // Обновление данных от Modbus (вызывается из main.js)
+   updateFromModbus(index, hexValue, physicalValue) {
+       // Обновляем ячейки таблицы
+       const hexCell = document.getElementById('hex-' + index);
+       const physCell = document.getElementById('phys-' + index);
+
+       if (hexCell) {
+           hexCell.textContent = '0x' + hexValue.toString(16).toUpperCase().padStart(4, '0');
+       }
+       if (physCell) {
+           physCell.textContent = physicalValue.toFixed(2);
+       }
+
+       // Сохраняем в историю для графика
+       if (!this.history[index]) {
+           this.history[index] = [];
+       }
+       this.history[index].push(physicalValue);
+
+       // Ограничиваем историю 100 точками
+       if (this.history[index].length > 100) {
+           this.history[index].shift();
+       }
+
+       // Перерисовываем график
+       this.drawGraph(index);
+
+       console.log('[LeftPanel] Modbus: параметр ' + index + ' = ' + physicalValue);
+   }
 
 }
 

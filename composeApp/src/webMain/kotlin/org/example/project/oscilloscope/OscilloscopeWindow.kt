@@ -22,15 +22,18 @@ fun OscilloscopeWindow(
 
         viewModel.sendParametersToJS()
 
-        // Запускаем периодическую отправку тестовых значений
-        val job = kotlinx.browser.window.setInterval({
-            viewModel.sendTestValuesToJS()
-            null as JsAny? // Возвращаем null, чтобы удовлетворить требование JsAny?
-        }, 1000) // Каждую секунду
+        // ❌ ТЕСТОВЫЕ ДАННЫЕ ОТКЛЮЧЕНЫ
+        // val job = kotlinx.browser.window.setInterval({
+        //     viewModel.sendTestValuesToJS()
+        //     null as JsAny?
+        // }, 20)
+
+        val job: Int? = null // job объявлена, но равна null
 
         onDispose {
             viewModel.stopJsOscilloscope()
-            kotlinx.browser.window.clearInterval(job) // Останавливаем таймер
+            // Не вызываем clearInterval, так как job = null
+            // if (job != null) kotlinx.browser.window.clearInterval(job)
         }
     }
 
