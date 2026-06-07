@@ -10,6 +10,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.example.project.logic.ModbusRepository
 import org.example.project.logic.ParamConverter
+import org.example.project.models.ParameterType
 
 // ====================================================================
 // ИНТЕРФЕЙСНЫЙ МОСТ МЕЖДУ KOTLIN И JAVASCRIPT (Wasm-совместимый)
@@ -23,6 +24,12 @@ external fun callJsOscilloStart(registersStr: String, baudRate: Int)
 @JsFun("() => { if (window.oscilloStop) window.oscilloStop(); }")
 external fun callJsOscilloStop()
 
+@JsFun("(jsonStr) => { if (window.buildLeftPanel) window.buildLeftPanel(jsonStr); }")
+external fun callJsBuildLeftPanel(jsonStr: String)
+
+// Мост для обновления значений в левой панели
+@JsFun("(jsonStr) => { if (window.updateLeftPanelValues) window.updateLeftPanelValues(jsonStr); }")
+external fun callJsUpdateLeftPanelValues(jsonStr: String)
 
 class MainViewModel {
     var currentVarsMap = mapOf<String, Double>()
@@ -237,6 +244,96 @@ class MainViewModel {
             }
         }
     }
+
+    fun sendParametersToJS() {
+        try {
+            val device = currentDeviceState.value
+
+            if (device == null) {
+                println("ОШИБКА: currentDeviceState.value равен null")
+                return
+            }
+
+            println("=== ДИАГНОСТИКА RAM ===")
+            println("Всего параметров в Flash: ${device.flashParameters.size}")
+            println("Всего параметров в RAM: ${device.ramParameters.size}")
+            println("Всего параметров в CD: ${device.cdParameters.size}")
+
+            val ramParams = device.ramParameters
+
+            if (ramParams.isEmpty()) {
+                println("ОШИБКА: список RAM-параметров пуст!")
+                return
+            }
+
+            println("Первые 5 RAM-параметров:")
+            ramParams.take(5).forEachIndexed { index, param ->
+                println("  [$index] name='${param.idName}', register='${param.modbusReg}', unit='${param.unit}'")
+            }
+
+            val jsonParts = mutableListOf<String>()
+
+            for (param in ramParams) {
+                val isDisc = param.type == ParameterType.TBit
+                val name = param.idName.replace("\"", "'")
+                val unit = param.unit.replace("\"", "'")
+                val reg = param.modbusReg.replace("\"", "'")
+
+                val jsonPart = "{\"name\":\"$name\",\"register\":\"$reg\",\"unit\":\"$unit\",\"scale\":${param.vars},\"isDiscrete\":$isDisc}"
+                jsonParts.add(jsonPart)
+            }
+
+            val json = "[" + jsonParts.joinToString(",") + "]"
+
+            println("Отправляю JSON длиной ${json.length} символов")
+            println("Первые 200 символов JSON: ${json.take(200)}")
+
+            callJsBuildLeftPanel(json)
+            println("Успешно отправлено ${ramParams.size} RAM-параметров в левую панель")
+        } catch (e: Exception) {
+            println("КРИТИЧЕСКАЯ ОШИБКА отправки в JS: ${e.message}")
+            e.printStackTrace()
+        }
+    }
+
+    fun sendTestValuesToJS() {
+        try {
+            val device = currentDeviceState.value ?: return
+            val ramParams = device.ramParameters
+
+            if (ramParams.isEmpty()) {
+                println("Нет RAM-параметров для отправки тестовых значений")
+                return
+            }
+
+            val jsonParts = mutableListOf<String>()
+            val random = kotlin.random.Random
+
+            ramParams.forEachIndexed { index, param ->
+                // Случайное 16-битное число для hex
+                val hexValue = random.nextInt(0, 65536)
+                val testHex = "x" + hexValue.toString(16).uppercase().padStart(4, '0')
+
+                // Случайное число для physical (от 0 до 1000)
+                val physValue = random.nextDouble(0.0, 1000.0)
+                val rounded = kotlin.math.round(physValue * 100) / 100.0
+                val testPhys = rounded.toString()
+
+                // НОВОЕ: передаём числовое значение для графика
+                val jsonPart = """{"index":$index,"hex":"$testHex","physical":"$testPhys","value":$rounded}"""
+                jsonParts.add(jsonPart)
+            }
+
+            val json = "[" + jsonParts.joinToString(",") + "]"
+
+            println("Отправляю тестовые значения для ${ramParams.size} параметров")
+            callJsUpdateLeftPanelValues(json)
+
+        } catch (e: Exception) {
+            println("Ошибка отправки тестовых значений: ${e.message}")
+        }
+    }
+
 }
 
 val LocalMainViewModel = staticCompositionLocalOf<MainViewModel> {

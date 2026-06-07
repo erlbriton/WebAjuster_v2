@@ -180,6 +180,7 @@ fun HeaderTable(
                 icon = Icons.AutoMirrored.Filled.ListAlt, tooltipText = "Генератор отчетов в Exel",
                 onClick = { actions.onExel() }
             )
+
             // --- 4. ОСЦИЛЛОГРАФ ---
             TooltipBox(
                 positionProvider = TooltipDefaults.rememberTooltipPositionProvider(
