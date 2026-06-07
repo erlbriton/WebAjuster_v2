@@ -34,13 +34,6 @@ self.onmessage = function(e) {
             draw(g);
         }
     }
-    else if (msg.type === 'clear') {
-        const g = graphs[id];
-        if (g) {
-            g.history = [];
-            g.ctx.clearRect(0, 0, g.canvas.width, g.canvas.height);
-        }
-    }
 };
 
 function draw(g) {

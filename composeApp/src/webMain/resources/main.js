@@ -1,5 +1,4 @@
 ﻿const scopeWorker = new Worker('scope_worker.js');
-const leftGraphWorker = new Worker('left_graph_worker.js');
 
 let port, writer, reader;
 
@@ -46,7 +45,7 @@ async function startSerial() {
                 console.warn('[Main] ⚠️ Ошибка отправки:', e.message);
                 break;
             }
-            await new Promise(r => setTimeout(r, 5));
+            await new Promise(r => setTimeout(r, 15));
         }
     })();
 
@@ -72,11 +71,23 @@ async function startSerial() {
                             const v1 = (buf[3] << 8) | buf[4];
                             const v2 = (buf[5] << 8) | buf[6];
 
+                            // Основной осциллограф
                             scopeWorker.postMessage({ type: 'data', v1, v2, t: performance.now() });
 
-                            if (window.leftPanel && typeof window.leftPanel.updateFromModbus === 'function') {
-                                window.leftPanel.updateFromModbus(0, v1, v1);
+                            // 🔥 ОТПРАВКА В WORKER ЧЕРЕЗ leftPanel
+                            if (window.leftPanel && window.leftPanel.worker) {
+                                window.leftPanel.worker.postMessage({
+                                    type: 'data',
+                                    id: 0,
+                                    value: v1
+                                });
                             }
+
+                            // Обновление текста
+                            const hexCell = document.getElementById('hex-0');
+                            const physCell = document.getElementById('phys-0');
+                            if (hexCell) hexCell.textContent = '0x' + v1.toString(16).toUpperCase().padStart(4, '0');
+                            if (physCell) physCell.textContent = v1.toFixed(2);
                         }
                         buf.splice(0, 9);
                     } else {

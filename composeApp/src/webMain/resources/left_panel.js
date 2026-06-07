@@ -2,9 +2,9 @@ class LeftPanel {
     constructor() {
         this.params = [];
         this.rowHeight = 60;
-        this.history = {};
         this.worker = new Worker('left_graph_worker.js');
         this.resizeObservers = new Map();
+        this.graphCells = new Map();
         console.log('[LeftPanel] Конструктор создан, Worker запущен');
     }
 
@@ -69,28 +69,37 @@ class LeftPanel {
 
         graphCell.appendChild(canvas);
 
-        try {
-            const offscreen = canvas.transferControlToOffscreen();
-            this.worker.postMessage({
-                type: 'init',
-                id: index,
-                canvas: offscreen,
-                width: graphCell.clientWidth || 300,
-                height: this.rowHeight
-            }, [offscreen]);
-        } catch (e) {
-            console.error('[LeftPanel] Ошибка transferControlToOffscreen:', e);
-        }
+        this.graphCells.set(index, graphCell);
 
+        // 🔥 Передача OffscreenCanvas в Worker
+        setTimeout(() => {
+            try {
+                const rect = graphCell.getBoundingClientRect();
+                const offscreen = canvas.transferControlToOffscreen();
+                this.worker.postMessage({
+                    type: 'init',
+                    id: index,
+                    canvas: offscreen,
+                    width: rect.width || 300,
+                    height: rect.height || this.rowHeight
+                }, [offscreen]);
+            } catch (e) {
+                console.error('[LeftPanel] Ошибка transferControlToOffscreen:', e);
+            }
+        }, 100);
+
+        // 🔥 ResizeObserver для синхронизации размеров
         const resizeObserver = new ResizeObserver(entries => {
             for (let entry of entries) {
                 const { width, height } = entry.contentRect;
-                this.worker.postMessage({
-                    type: 'resize',
-                    id: index,
-                    width: width,
-                    height: height
-                });
+                if (width > 0 && height > 0) {
+                    this.worker.postMessage({
+                        type: 'resize',
+                        id: index,
+                        width: width,
+                        height: height
+                    });
+                }
             }
         });
         resizeObserver.observe(graphCell);
@@ -117,37 +126,14 @@ class LeftPanel {
         row.style.height = newHeight + 'px';
     }
 
-    updateFromModbus(index, hexValue, physicalValue) {
-        const hexCell = document.getElementById('hex-' + index);
-        const physCell = document.getElementById('phys-' + index);
-        if (hexCell) hexCell.textContent = '0x' + hexValue.toString(16).toUpperCase().padStart(4, '0');
-        if (physCell) physCell.textContent = physicalValue.toFixed(2);
-
-        if (!this.history[index]) this.history[index] = [];
-        this.history[index].push(physicalValue);
-        if (this.history[index].length > 100) this.history[index].shift();
-
-        const canvas = document.getElementById('canvas-' + index);
-        if (canvas && canvas.parentElement) {
-            const rect = canvas.parentElement.getBoundingClientRect();
-            this.worker.postMessage({
-                type: 'data',
-                id: index,
-                value: physicalValue,
-                width: rect.width,
-                height: rect.height
-            });
-        }
-    }
-
     destroy() {
         this.resizeObservers.forEach(ro => ro.disconnect());
         this.resizeObservers.clear();
+        this.graphCells.clear();
     }
 }
 
 window.leftPanel = new LeftPanel();
 window.buildLeftPanel = function(jsonStr) { window.leftPanel.buildFromJSON(jsonStr); };
-window.updateLeftPanelValues = function(jsonStr) { window.leftPanel.updateAllValues(jsonStr); };
 
 console.log('[LeftPanel] Module loaded with Worker');
