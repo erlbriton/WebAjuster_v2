@@ -54,38 +54,67 @@
             border-collapse: collapse;
             font-family: monospace;
             font-size: 12px;
-            table-layout: auto; /* 🔥 Свободная ширина столбцов */
+            table-layout: fixed; /* 🔥 Для ресайза столбцов */
         }
 
-        /* 🔥 Стили заголовков */
+        /* 🔥 Заголовки с ресайзом */
         .param-table th {
             background: #e8e8e8;
             padding: 4px 8px;
-            text-align: center;           /* 🔥 Центрирование текста */
+            text-align: center;
             vertical-align: middle;
             border-bottom: 2px solid #aaa;
-            border-right: 1px solid #bbb; /* 🔥 Визуальное разделение */
+            border-right: 1px solid #bbb;
             font-weight: bold;
             white-space: nowrap;
-            cursor: default;
+            position: relative;
+            user-select: none;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
-        /* 🔥 Убираем правую границу у последнего заголовка */
         .param-table th:last-child {
             border-right: none;
         }
 
-        /* 🔥 Разные оттенки для каждого заголовка (дополнительное разделение) */
-        .param-table th:nth-child(1) { background: #d9e7f5; } /* Name - голубой */
-        .param-table th:nth-child(2) { background: #f5d9d9; } /* Hex - розовый */
-        .param-table th:nth-child(3) { background: #d9f5dd; } /* Physical - зеленый */
-        .param-table th:nth-child(4) { background: #f5f0d9; } /* Unit - желтый */
-        .param-table th:nth-child(5) { background: #e5d9f5; } /* Graph - фиолетовый */
+        /* Разные цвета для заголовков */
+        .param-table th:nth-child(1) { background: #d9e7f5; width: 150px; }
+        .param-table th:nth-child(2) { background: #f5d9d9; width: 100px; }
+        .param-table th:nth-child(3) { background: #d9f5dd; width: 100px; }
+        .param-table th:nth-child(4) { background: #f5f0d9; width: 60px; }
+        .param-table th:nth-child(5) { background: #e5d9f5; } /* Graph - автоматически */
+
+        /* 🔥 Ручка ресайза */
+        .param-table th .resize-handle {
+            position: absolute;
+            right: 0;
+            top: 0;
+            width: 5px;
+            height: 100%;
+            cursor: col-resize;
+            z-index: 10;
+        }
+
+        .param-table th .resize-handle:hover {
+            background: rgba(0, 120, 255, 0.4);
+        }
+
+        .param-table th:last-child .resize-handle {
+            display: none;
+        }
+
+        .param-table.resizing,
+        .param-table.resizing * {
+            cursor: col-resize !important;
+            user-select: none !important;
+        }
 
         .param-table td {
             border: none;
             padding: 0 5px;
             vertical-align: middle;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .param-table tr.selected {
@@ -170,7 +199,6 @@
     <table id="paramTable">
         <thead>
         <tr>
-            <!-- 🔥 Убраны фиксированные ширины style="width: ..." -->
             <th>Name</th>
             <th>Hex</th>
             <th>Physical</th>

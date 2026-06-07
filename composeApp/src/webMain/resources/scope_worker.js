@@ -3,16 +3,9 @@ const TIME_WINDOW = 32000;
 const MAX_POINTS = 5000;
 const MAX_GAP = 1000;
 
-// 🔥 Массив цветов для разных каналов
 const COLORS = [
-    '#4A90E2', // синий - канал 0
-    '#E24A4A', // красный - канал 1
-    '#50C878', // зеленый - канал 2
-    '#FFB347', // оранжевый - канал 3
-    '#9B59B6', // фиолетовый - канал 4
-    '#1ABC9C', // бирюзовый - канал 5
-    '#F39C12', // желтый - канал 6
-    '#E74C3C', // алый - канал 7
+    '#4A90E2', '#E24A4A', '#50C878', '#FFB347',
+    '#9B59B6', '#1ABC9C', '#F39C12', '#E74C3C',
 ];
 
 self.onmessage = (e) => {
@@ -27,9 +20,8 @@ self.onmessage = (e) => {
             h: msg.height || c.height,
             buffer: [],
             settings: { maxVal: null },
-            color: COLORS[msg.id % COLORS.length] // 🔥 Цвет зависит от id
+            color: COLORS[msg.id % COLORS.length]
         };
-        console.log(`[Worker] Graph #${msg.id} initialized: color=${graphs[msg.id].color}`);
     }
     else if (msg.type === 'data') {
         const g = graphs[msg.id];
@@ -41,11 +33,15 @@ self.onmessage = (e) => {
     else if (msg.type === 'updateSettings') {
         const g = graphs[msg.id];
         if (g) {
+            if (msg.width !== undefined && msg.width > 0) {
+                g.canvas.width = msg.width;
+                g.w = msg.width;
+            }
             if (msg.height !== undefined && msg.height > 0) {
                 g.canvas.height = msg.height;
                 g.h = msg.height;
-                g.ctx = g.canvas.getContext('2d');
             }
+            g.ctx = g.canvas.getContext('2d');
             if (msg.maxVal !== undefined) {
                 g.settings.maxVal = msg.maxVal;
             }
@@ -94,7 +90,6 @@ setInterval(() => {
             range = maxV - minV || 1;
         }
 
-        // 🔥 Используем цвет канала
         g.ctx.strokeStyle = g.color;
         g.ctx.lineWidth = 1.5;
         g.ctx.beginPath();

@@ -16,7 +16,7 @@ window.connectToDevice = async function() {
         setupContextMenu();
         startSerial();
     } catch (err) {
-        console.error('[Main] ', err.message);
+        console.error('[Main] ❌', err.message);
         showDisconnectDialog('Ошибка подключения: ' + err.message);
     }
 };
@@ -85,16 +85,80 @@ function initParamTable() {
         }, 100 + idx * 50);
     });
 
-    // 🔥 Делегирование клика для переключения выделения строк
+    // Клик для переключения активной строки
     tbody.addEventListener('click', function(e) {
         const row = e.target.closest('tr');
         if (!row) return;
-
-        // Снимаем класс selected со всех строк
         tbody.querySelectorAll('tr').forEach(r => r.classList.remove('selected'));
-
-        // Добавляем класс selected к нажатой строке
         row.classList.add('selected');
+    });
+
+    // 🔥 Настраиваем ресайз столбцов
+    setupColumnResize();
+}
+
+function setupColumnResize() {
+    const table = document.getElementById('paramTable');
+    const thead = table.querySelector('thead');
+    const ths = thead.querySelectorAll('th');
+
+    // Добавляем ручки ресайза в каждый заголовок (кроме последнего)
+    ths.forEach((th, idx) => {
+        if (idx === ths.length - 1) return;
+        const handle = document.createElement('div');
+        handle.className = 'resize-handle';
+        th.appendChild(handle);
+    });
+
+    let isResizing = false;
+    let currentTh = null;
+    let startX = 0;
+    let startWidth = 0;
+
+    thead.addEventListener('mousedown', (e) => {
+        if (!e.target.classList.contains('resize-handle')) return;
+
+        isResizing = true;
+        currentTh = e.target.closest('th');
+        startX = e.pageX;
+        startWidth = currentTh.offsetWidth;
+
+        table.classList.add('resizing');
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isResizing || !currentTh) return;
+        const delta = e.pageX - startX;
+        const newWidth = Math.max(40, startWidth + delta);
+        currentTh.style.width = newWidth + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (isResizing) {
+            isResizing = false;
+            currentTh = null;
+            table.classList.remove('resizing');
+
+            // 🔥 Обновляем размеры canvas после ресайза
+            updateCanvasSizes();
+        }
+    });
+}
+
+function updateCanvasSizes() {
+    const rows = document.querySelectorAll('#paramTableBody tr');
+    rows.forEach((row, idx) => {
+        const graphCell = row.querySelector('.graph-cell');
+        if (graphCell) {
+            const rect = graphCell.getBoundingClientRect();
+            scopeWorker.postMessage({
+                type: 'updateSettings',
+                id: idx,
+                width: Math.round(rect.width),
+                height: Math.round(rect.height)
+            });
+        }
     });
 }
 
