@@ -3,6 +3,18 @@ const TIME_WINDOW = 32000;
 const MAX_POINTS = 5000;
 const MAX_GAP = 1000;
 
+// 🔥 Массив цветов для разных каналов
+const COLORS = [
+    '#4A90E2', // синий - канал 0
+    '#E24A4A', // красный - канал 1
+    '#50C878', // зеленый - канал 2
+    '#FFB347', // оранжевый - канал 3
+    '#9B59B6', // фиолетовый - канал 4
+    '#1ABC9C', // бирюзовый - канал 5
+    '#F39C12', // желтый - канал 6
+    '#E74C3C', // алый - канал 7
+];
+
 self.onmessage = (e) => {
     const msg = e.data;
 
@@ -14,9 +26,10 @@ self.onmessage = (e) => {
             w: msg.width || c.width,
             h: msg.height || c.height,
             buffer: [],
-            settings: { maxVal: null }
+            settings: { maxVal: null },
+            color: COLORS[msg.id % COLORS.length] // 🔥 Цвет зависит от id
         };
-        console.log(`[Worker] Graph #${msg.id} initialized: w=${graphs[msg.id].w}, h=${graphs[msg.id].h}`);
+        console.log(`[Worker] Graph #${msg.id} initialized: color=${graphs[msg.id].color}`);
     }
     else if (msg.type === 'data') {
         const g = graphs[msg.id];
@@ -36,7 +49,6 @@ self.onmessage = (e) => {
             if (msg.maxVal !== undefined) {
                 g.settings.maxVal = msg.maxVal;
             }
-            console.log(`[Worker] #${msg.id} updated: w=${g.w}, h=${g.h}, maxVal=${g.settings.maxVal}`);
         }
     }
 };
@@ -82,36 +94,32 @@ setInterval(() => {
             range = maxV - minV || 1;
         }
 
-        g.ctx.strokeStyle = '#4A90E2';
+        // 🔥 Используем цвет канала
+        g.ctx.strokeStyle = g.color;
         g.ctx.lineWidth = 1.5;
         g.ctx.beginPath();
 
-               let drawing = false;
-               for (let i = 0; i < visible.length; i++) {
-                   const p = visible[i];
-                   const x = g.w - (p.age / TIME_WINDOW) * g.w;
-                   const y = g.h - ((p.v - bottomVal) / range) * g.h;
+        let drawing = false;
+        for (let i = 0; i < visible.length; i++) {
+            const p = visible[i];
+            const x = g.w - (p.age / TIME_WINDOW) * g.w;
+            const y = g.h - ((p.v - bottomVal) / range) * g.h;
 
-                   // 🔥 ОТЛАДКА: выводим координаты ПЕРВОЙ точки (самой новой)
-                   if (i === 0 && Math.random() < 0.01) {
-                       console.log(`[Worker] FIRST point (newest): age=${p.age.toFixed(1)}, x=${x.toFixed(1)}, g.w=${g.w}`);
-                   }
+            if (i > 0) {
+                const prevP = visible[i - 1];
+                const timeGap = p.t - prevP.t;
+                if (timeGap > MAX_GAP) {
+                    drawing = false;
+                }
+            }
 
-                   if (i > 0) {
-                       const prevP = visible[i - 1];
-                       const timeGap = p.t - prevP.t;
-                       if (timeGap > MAX_GAP) {
-                           drawing = false;
-                       }
-                   }
-
-                   if (!drawing) {
-                       g.ctx.moveTo(x, y);
-                       drawing = true;
-                   } else {
-                       g.ctx.lineTo(x, y);
-                   }
-               }
-               g.ctx.stroke();
+            if (!drawing) {
+                g.ctx.moveTo(x, y);
+                drawing = true;
+            } else {
+                g.ctx.lineTo(x, y);
+            }
+        }
+        g.ctx.stroke();
     }
 }, 16);

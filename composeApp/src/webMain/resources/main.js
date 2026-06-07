@@ -16,7 +16,7 @@ window.connectToDevice = async function() {
         setupContextMenu();
         startSerial();
     } catch (err) {
-        console.error('[Main] ❌', err.message);
+        console.error('[Main] ', err.message);
         showDisconnectDialog('Ошибка подключения: ' + err.message);
     }
 };
@@ -26,57 +26,76 @@ function initParamTable() {
     if (!tbody) return;
     tbody.innerHTML = '';
 
-    const row = document.createElement('tr');
-    row.classList.add('selected');
-    row.style.height = '60px';
+    const params = [
+        { name: 'REG_0x2D', hexId: 'hex-0', physId: 'phys-0', graphId: 'graph-0', graphIdx: 0 },
+        { name: 'REG_0x2E', hexId: 'hex-1', physId: 'phys-1', graphId: 'graph-1', graphIdx: 1 }
+    ];
 
-    const nameCell = document.createElement('td');
-    nameCell.textContent = 'DEX_STATE(TEST)';
-    row.appendChild(nameCell);
+    params.forEach((param, idx) => {
+        const row = document.createElement('tr');
+        if (idx === 0) row.classList.add('selected');
+        row.style.height = '20px';
 
-    const hexCell = document.createElement('td');
-    hexCell.id = 'hex-0';
-    hexCell.className = 'hex-value';
-    hexCell.textContent = 'x0000';
-    row.appendChild(hexCell);
+        const nameCell = document.createElement('td');
+        nameCell.textContent = param.name;
+        row.appendChild(nameCell);
 
-    const physCell = document.createElement('td');
-    physCell.id = 'phys-0';
-    physCell.className = 'phys-value';
-    physCell.textContent = '0.00';
-    row.appendChild(physCell);
+        const hexCell = document.createElement('td');
+        hexCell.id = param.hexId;
+        hexCell.className = 'hex-value';
+        hexCell.textContent = 'x0000';
+        row.appendChild(hexCell);
 
-    const unitCell = document.createElement('td');
-    unitCell.textContent = '--';
-    row.appendChild(unitCell);
+        const physCell = document.createElement('td');
+        physCell.id = param.physId;
+        physCell.className = 'phys-value';
+        physCell.textContent = '0.00';
+        row.appendChild(physCell);
 
-    const graphCell = document.createElement('td');
-    graphCell.className = 'graph-cell';
-    graphCell.style.height = '60px';
+        const unitCell = document.createElement('td');
+        unitCell.textContent = '--';
+        row.appendChild(unitCell);
 
-    const canvas = document.createElement('canvas');
-    canvas.id = 'graph-0';
-    canvas.width = 400;
-    canvas.height = 60;
-    graphCell.appendChild(canvas);
+        const graphCell = document.createElement('td');
+        graphCell.className = 'graph-cell';
+        graphCell.style.height = '20px';
 
-    row.appendChild(graphCell);
-    tbody.appendChild(row);
+        const canvas = document.createElement('canvas');
+        canvas.id = param.graphId;
+        canvas.width = 400;
+        canvas.height = 20;
+        graphCell.appendChild(canvas);
 
-    setTimeout(() => {
-        try {
-            const offscreen = canvas.transferControlToOffscreen();
-            scopeWorker.postMessage({
-                type: 'initGraph',
-                id: 0,
-                canvas: offscreen,
-                width: 400,
-                height: 60
-            }, [offscreen]);
-        } catch (e) {
-            console.error('[Main] ❌ Ошибка transferControlToOffscreen:', e);
-        }
-    }, 100);
+        row.appendChild(graphCell);
+        tbody.appendChild(row);
+
+        setTimeout(() => {
+            try {
+                const offscreen = canvas.transferControlToOffscreen();
+                scopeWorker.postMessage({
+                    type: 'initGraph',
+                    id: param.graphIdx,
+                    canvas: offscreen,
+                    width: 400,
+                    height: 20
+                }, [offscreen]);
+            } catch (e) {
+                console.error(`[Main] ❌ Ошибка инициализации графика #${param.graphIdx}:`, e);
+            }
+        }, 100 + idx * 50);
+    });
+
+    // 🔥 Делегирование клика для переключения выделения строк
+    tbody.addEventListener('click', function(e) {
+        const row = e.target.closest('tr');
+        if (!row) return;
+
+        // Снимаем класс selected со всех строк
+        tbody.querySelectorAll('tr').forEach(r => r.classList.remove('selected'));
+
+        // Добавляем класс selected к нажатой строке
+        row.classList.add('selected');
+    });
 }
 
 function setupContextMenu() {
@@ -92,7 +111,7 @@ function setupContextMenu() {
         e.preventDefault();
 
         currentPopupIndex = Array.from(tbody.children).indexOf(row);
-        const settings = paramSettings[currentPopupIndex] || { height: 60, maxVal: null };
+        const settings = paramSettings[currentPopupIndex] || { height: 20, maxVal: null };
 
         heightInput.value = settings.height;
         maxInput.value = settings.maxVal !== null ? settings.maxVal : '';
@@ -120,15 +139,12 @@ function setupContextMenu() {
             if (graphCell) {
                 graphCell.style.height = newHeight + 'px';
 
-                const canvas = graphCell.querySelector('canvas');
-                if (canvas) {
-                    scopeWorker.postMessage({
-                        type: 'updateSettings',
-                        id: currentPopupIndex,
-                        height: newHeight,
-                        maxVal: maxVal
-                    });
-                }
+                scopeWorker.postMessage({
+                    type: 'updateSettings',
+                    id: currentPopupIndex,
+                    height: newHeight,
+                    maxVal: maxVal
+                });
             }
         }
 
@@ -157,7 +173,7 @@ async function startSerial() {
     (async () => {
         while (port && isDeviceConnected) {
             try {
-                const body = new Uint8Array([0x01, 0x03, 0x00, 0x2D, 0x00, 0x01]);
+                const body = new Uint8Array([0x01, 0x03, 0x00, 0x2D, 0x00, 0x02]);
                 let crc = 0xFFFF;
                 for (let b of body) { crc ^= b; for (let i = 0; i < 8; i++) crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : crc >> 1; }
                 await writer.write(new Uint8Array([...body, crc & 0xFF, (crc >> 8) & 0xFF]));
@@ -179,18 +195,26 @@ async function startSerial() {
 
                 buf.push(...value);
 
-                while (buf.length >= 7) {
-                    if (buf[0] === 0x01 && buf[1] === 0x03 && buf[2] === 0x02) {
+                while (buf.length >= 9) {
+                    if (buf[0] === 0x01 && buf[1] === 0x03 && buf[2] === 0x04) {
                         let crc = 0xFFFF;
-                        for (let i = 0; i < 5; i++) { crc ^= buf[i]; for (let j = 0; j < 8; j++) crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : crc >> 1; }
+                        for (let i = 0; i < 7; i++) {
+                            crc ^= buf[i];
+                            for (let j = 0; j < 8; j++) crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : crc >> 1;
+                        }
 
-                        if (crc === (buf[5] | (buf[6] << 8))) {
+                        if (crc === (buf[7] | (buf[8] << 8))) {
                             const v1 = (buf[3] << 8) | buf[4];
+                            const v2 = (buf[5] << 8) | buf[6];
 
                             updateParamRow(0, v1, v1);
-                            scopeWorker.postMessage({ type: 'data', id: 0, v1: v1, t: performance.now() });
+                            updateParamRow(1, v2, v2);
+
+                            const now = performance.now();
+                            scopeWorker.postMessage({ type: 'data', id: 0, v1: v1, t: now });
+                            scopeWorker.postMessage({ type: 'data', id: 1, v1: v2, t: now });
                         }
-                        buf.splice(0, 7);
+                        buf.splice(0, 9);
                     } else {
                         buf.shift();
                     }
