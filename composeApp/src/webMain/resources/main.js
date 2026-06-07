@@ -95,7 +95,7 @@ async function startSerial() {
                 handleDeviceError(e);
                 break;
             }
-            await new Promise(r => setTimeout(r, 60));
+            await new Promise(r => setTimeout(r, 1));
         }
     })();
 
