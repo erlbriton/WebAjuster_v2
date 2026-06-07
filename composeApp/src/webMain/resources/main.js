@@ -2,6 +2,9 @@
 let port, writer, reader;
 let isDeviceConnected = false;
 
+const paramSettings = {};
+let currentPopupIndex = null;
+
 window.connectToDevice = async function() {
     try {
         port = await navigator.serial.requestPort();
@@ -10,6 +13,7 @@ window.connectToDevice = async function() {
         isDeviceConnected = true;
 
         initParamTable();
+        setupContextMenu();
         startSerial();
     } catch (err) {
         console.error('[Main] ❌', err.message);
@@ -24,6 +28,7 @@ function initParamTable() {
 
     const row = document.createElement('tr');
     row.classList.add('selected');
+    row.style.height = '60px';
 
     const nameCell = document.createElement('td');
     nameCell.textContent = 'DEX_STATE(TEST)';
@@ -47,28 +52,94 @@ function initParamTable() {
 
     const graphCell = document.createElement('td');
     graphCell.className = 'graph-cell';
+    graphCell.style.height = '60px';
 
     const canvas = document.createElement('canvas');
     canvas.id = 'graph-0';
-    canvas.width = 800;
-    canvas.height = 20;
+    canvas.width = 400;
+    canvas.height = 60;
     graphCell.appendChild(canvas);
-
-       setTimeout(() => {
-               try {
-                   const offscreen = canvas.transferControlToOffscreen();
-                   scopeWorker.postMessage({
-                       type: 'initGraph',
-                       id: 0,
-                       canvas: offscreen
-                   }, [offscreen]);
-               } catch (e) {
-                   console.error('[Main] ❌ Ошибка transferControlToOffscreen:', e);
-               }
-           }, 100);
 
     row.appendChild(graphCell);
     tbody.appendChild(row);
+
+    setTimeout(() => {
+        try {
+            const offscreen = canvas.transferControlToOffscreen();
+            scopeWorker.postMessage({
+                type: 'initGraph',
+                id: 0,
+                canvas: offscreen,
+                width: 400,
+                height: 60
+            }, [offscreen]);
+        } catch (e) {
+            console.error('[Main] ❌ Ошибка transferControlToOffscreen:', e);
+        }
+    }, 100);
+}
+
+function setupContextMenu() {
+    const tbody = document.getElementById('paramTableBody');
+    const popup = document.getElementById('paramSettingsPopup');
+    const heightInput = document.getElementById('popupHeight');
+    const maxInput = document.getElementById('popupMax');
+    const applyBtn = document.getElementById('popupApply');
+
+    tbody.addEventListener('contextmenu', function(e) {
+        const row = e.target.closest('tr');
+        if (!row) return;
+        e.preventDefault();
+
+        currentPopupIndex = Array.from(tbody.children).indexOf(row);
+        const settings = paramSettings[currentPopupIndex] || { height: 60, maxVal: null };
+
+        heightInput.value = settings.height;
+        maxInput.value = settings.maxVal !== null ? settings.maxVal : '';
+
+        popup.style.left = e.pageX + 'px';
+        popup.style.top = e.pageY + 'px';
+        popup.style.display = 'block';
+    });
+
+    applyBtn.addEventListener('click', function() {
+        if (currentPopupIndex === null) return;
+
+        const newHeight = parseInt(heightInput.value) || 60;
+        const newMax = maxInput.value.trim();
+        const maxVal = newMax === '' ? null : parseFloat(newMax);
+
+        paramSettings[currentPopupIndex] = { height: newHeight, maxVal: maxVal };
+
+        const rows = tbody.querySelectorAll('tr');
+        if (rows[currentPopupIndex]) {
+            const row = rows[currentPopupIndex];
+            row.style.height = newHeight + 'px';
+
+            const graphCell = row.querySelector('.graph-cell');
+            if (graphCell) {
+                graphCell.style.height = newHeight + 'px';
+
+                const canvas = graphCell.querySelector('canvas');
+                if (canvas) {
+                    scopeWorker.postMessage({
+                        type: 'updateSettings',
+                        id: currentPopupIndex,
+                        height: newHeight,
+                        maxVal: maxVal
+                    });
+                }
+            }
+        }
+
+        popup.style.display = 'none';
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('#paramSettingsPopup') && popup.style.display === 'block') {
+            popup.style.display = 'none';
+        }
+    });
 }
 
 async function startSerial() {
@@ -91,11 +162,11 @@ async function startSerial() {
                 for (let b of body) { crc ^= b; for (let i = 0; i < 8; i++) crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : crc >> 1; }
                 await writer.write(new Uint8Array([...body, crc & 0xFF, (crc >> 8) & 0xFF]));
             } catch (e) {
-                console.warn('[Main] ️ Ошибка отправки:', e.message);
+                console.warn('[Main] ⚠️ Ошибка отправки:', e.message);
                 handleDeviceError(e);
                 break;
             }
-            await new Promise(r => setTimeout(r, 1));
+            await new Promise(r => setTimeout(r, 100));
         }
     })();
 
@@ -117,7 +188,6 @@ async function startSerial() {
                             const v1 = (buf[3] << 8) | buf[4];
 
                             updateParamRow(0, v1, v1);
-
                             scopeWorker.postMessage({ type: 'data', id: 0, v1: v1, t: performance.now() });
                         }
                         buf.splice(0, 7);
