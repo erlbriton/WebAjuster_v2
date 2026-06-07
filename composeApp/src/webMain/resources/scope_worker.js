@@ -1,59 +1,57 @@
-// scope_worker.js - Временная ось X (иммунитет к блокировкам Compose)
-let ctx, w, h;
-let d1 = [], d2 = [];
-const TIME_WINDOW = 2000; // Вектор видимости: 2 секунды
-const MAX_POINTS = 500;
+const graphs = {};
+const MAX_POINTS = 1000; // Фиксированное количество точек на экране
 
 self.onmessage = (e) => {
-    if (e.data.type === 'init') {
-        const c = e.data.canvas;
-        ctx = c.getContext('2d');
-        w = c.width; h = c.height;
-        setInterval(draw, 16); // 60 FPS независимая отрисовка
-        console.log('[Worker] 🕒 Time-based renderer started');
+    const msg = e.data;
+
+    if (msg.type === 'initGraph') {
+        const c = msg.canvas;
+        graphs[msg.id] = {
+            ctx: c.getContext('2d'),
+            w: c.width,
+            h: c.height,
+            buffer: [] // Храним только значения для отрисовки
+        };
     }
-    else if (e.data.type === 'data') {
-        const now = e.data.t;
-        d1.push({ t: now, v: e.data.v1 });
-        d2.push({ t: now, v: e.data.v2 });
-        if (d1.length > MAX_POINTS) d1.shift();
-        if (d2.length > MAX_POINTS) d2.shift();
+    else if (msg.type === 'data') {
+        const g = graphs[msg.id];
+        if (g) {
+            g.buffer.push(msg.v1);
+            if (g.buffer.length > MAX_POINTS) g.buffer.shift();
+        }
     }
 };
 
-function draw() {
-    if (!ctx) return;
-    const now = performance.now();
+setInterval(() => {
+    for (const id in graphs) {
+        const g = graphs[id];
+        if (!g.ctx || g.buffer.length < 2) continue;
 
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = '#FAFAFA'; ctx.fillRect(0, 0, w, h);
+        g.ctx.clearRect(0, 0, g.w, g.h);
+        g.ctx.fillStyle = '#FAFAFA';
+        g.ctx.fillRect(0, 0, g.w, g.h);
 
-    // Сетка
-    ctx.strokeStyle = '#EBEBEB'; ctx.lineWidth = 0.5;
-    for (let x = 0; x < w; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
-    for (let y = 0; y < h; y += h/4) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
-
-    const line = (arr, col, idx) => {
-        if (arr.length < 2) return;
-        const zh = h / 2;
-        const cy = idx * zh + zh / 2;
-        ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.beginPath();
-
-        let started = false;
-        for (let i = 0; i < arr.length; i++) {
-            const age = now - arr[i].t;
-            if (age > TIME_WINDOW) continue; // 🔥 Отбрасываем точки старше окна
-
-            // 🔥 Позиция X зависит от времени, а не от индекса!
-            const x = w - (age / TIME_WINDOW) * w;
-            const y = cy - (arr[i].v / 1100) * (zh / 2);
-
-            if (!started) { ctx.moveTo(x, y); started = true; }
-            else ctx.lineTo(x, y);
+        // Находим min/max для масштабирования по высоте
+        let minVal = Infinity, maxVal = -Infinity;
+        for (let v of g.buffer) {
+            if (v < minVal) minVal = v;
+            if (v > maxVal) maxVal = v;
         }
-        ctx.stroke();
-    };
+        const range = maxVal - minVal || 1;
 
-    line(d1, '#4A90E2', 0);
-    line(d2, '#E24A4A', 1);
-}
+        g.ctx.strokeStyle = '#4A90E2';
+        g.ctx.lineWidth = 1;
+        g.ctx.beginPath();
+
+        // 🔥 Растягиваем ВСЕ точки буфера на 100% ширины столбца Graph
+        for (let i = 0; i < g.buffer.length; i++) {
+            const x = (i / (g.buffer.length - 1)) * g.w;
+            const normalizedY = (g.buffer[i] - minVal) / range;
+            const y = g.h - (normalizedY * g.h);
+
+            if (i === 0) g.ctx.moveTo(x, y);
+            else g.ctx.lineTo(x, y);
+        }
+        g.ctx.stroke();
+    }
+}, 16);

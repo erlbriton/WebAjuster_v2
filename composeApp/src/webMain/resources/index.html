@@ -6,7 +6,6 @@
     <title>WebAjuster_v2</title>
     <link type="text/css" rel="stylesheet" href="styles.css">
 
-    <!-- 🔥 JS-БИБЛИОТЕКИ (порядок важен!) -->
     <script src="serial.js"></script>
     <script src="modbus.js"></script>
     <script src="ringBuffer.js"></script>
@@ -37,26 +36,75 @@
             transform: translate(-50%, -50%);
             z-index: 1;
         }
+
+        .param-table {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            width: 800px;
+            height: calc(100vh - 20px);
+            background: white;
+            border: 1px solid #ccc;
+            overflow: auto;
+            z-index: 1000;
+        }
+
+        .param-table table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        .param-table th {
+            background: #f0f0f0;
+            padding: 2px 5px;
+            text-align: left;
+            border-bottom: 1px solid #ccc;
+        }
+
+        .param-table td {
+            border: none;
+            padding: 0 5px;
+            height: 20px;
+            vertical-align: middle;
+            line-height: 20px;
+        }
+
+        .param-table tr.selected {
+            background: #00ff00 !important;
+        }
+
+        .graph-cell {
+            position: relative;
+            height: 100%;
+            width: 100%;
+            padding: 0 !important;
+            overflow: hidden;
+        }
+
+        .graph-cell canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .hex-value { color: #d32f2f; }
+        .phys-value { color: #1976d2; font-weight: bold; }
     </style>
 </head>
 
 <body>
 
 <div id="ComposeTarget"></div>
-<!-- 🔥 ТЕСТОВЫЙ КОНТЕЙНЕР ДЛЯ ОСЦИЛЛОГРАФА (Шаг 3) -->
-
 
 <script type="application/javascript" src="composeApp.js"></script>
 
 <script>
     window.addEventListener("load", function () {
         const loader = document.getElementById("loader");
+        if (loader) loader.style.display = "none";
 
-        if (loader) {
-            loader.style.display = "none";
-        }
-
-        // 🔥 ПРОВЕРКА: Все ли JS-файлы загрузились?
         console.log("✅ serial.js loaded:", typeof SerialConnection !== 'undefined');
         console.log("✅ modbus.js loaded:", typeof ModbusParser !== 'undefined');
         console.log("✅ ringBuffer.js loaded:", typeof RingBuffer !== 'undefined');
@@ -64,22 +112,20 @@
     });
 </script>
 
-<!-- ОСЦИЛЛОГРАФ -->
-<div id="testOscillo" style="
-    position: fixed;
-    top: 10px;
-    left: 10px;
-    width: 400px;
-    height: 200px;
-    z-index: 99999;
-    background: white;
-    border: 1px solid #ccc;
-    pointer-events: none;
-    transform: translateZ(0);
-    isolation: isolate;
-    contain: layout style paint;
-">
-    <canvas id="oscCanvas" width="400" height="200" style="display: block; width: 100%; height: 100%;"></canvas>
+<div class="param-table">
+    <table id="paramTable">
+        <thead>
+        <tr>
+            <th style="width: 150px;">Name</th>
+            <th style="width: 100px;">Hex</th>
+            <th style="width: 100px;">Physical</th>
+            <th style="width: 60px;">Unit</th>
+            <th>Graph</th>
+        </tr>
+        </thead>
+        <tbody id="paramTableBody">
+        </tbody>
+    </table>
 </div>
 
 </body>
