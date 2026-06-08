@@ -37,12 +37,13 @@
             z-index: 1;
         }
 
+        /* 🔥 ИЗМЕНЕНО: top: 0, left: 0, height: 100vh */
         .param-table {
             position: fixed;
-            top: 10px;
-            left: 10px;
+            top: 0;
+            left: 0;
             width: 800px;
-            height: calc(100vh - 20px);
+            height: 100vh;
             background: white;
             border: 1px solid #ccc;
             overflow: auto;
@@ -201,7 +202,6 @@
     });
 </script>
 
-<!-- 🔥 ВОТ ЗДЕСЬ: измени class="param-table" на class="param-table hidden" -->
 <div class="param-table hidden">
     <table id="paramTable">
         <thead>
