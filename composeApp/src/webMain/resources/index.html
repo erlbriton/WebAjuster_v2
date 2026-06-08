@@ -47,6 +47,15 @@
             border: 1px solid #ccc;
             overflow: auto;
             z-index: 1000;
+            transition: transform 0.3s ease, opacity 0.3s ease;
+            transform: translateX(0);
+            opacity: 1;
+        }
+
+        .param-table.hidden {
+            transform: translateX(-100%);
+            opacity: 0;
+            pointer-events: none;
         }
 
         .param-table table {
@@ -54,10 +63,9 @@
             border-collapse: collapse;
             font-family: monospace;
             font-size: 12px;
-            table-layout: fixed; /* 🔥 Для ресайза столбцов */
+            table-layout: fixed;
         }
 
-        /* 🔥 Заголовки с ресайзом */
         .param-table th {
             background: #e8e8e8;
             padding: 4px 8px;
@@ -77,14 +85,12 @@
             border-right: none;
         }
 
-        /* Разные цвета для заголовков */
         .param-table th:nth-child(1) { background: #d9e7f5; width: 150px; }
         .param-table th:nth-child(2) { background: #f5d9d9; width: 100px; }
         .param-table th:nth-child(3) { background: #d9f5dd; width: 100px; }
         .param-table th:nth-child(4) { background: #f5f0d9; width: 60px; }
-        .param-table th:nth-child(5) { background: #e5d9f5; } /* Graph - автоматически */
+        .param-table th:nth-child(5) { background: #e5d9f5; }
 
-        /* 🔥 Ручка ресайза */
         .param-table th .resize-handle {
             position: absolute;
             right: 0;
@@ -195,7 +201,8 @@
     });
 </script>
 
-<div class="param-table">
+<!-- 🔥 ВОТ ЗДЕСЬ: измени class="param-table" на class="param-table hidden" -->
+<div class="param-table hidden">
     <table id="paramTable">
         <thead>
         <tr>

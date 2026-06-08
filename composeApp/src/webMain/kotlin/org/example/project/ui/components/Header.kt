@@ -49,6 +49,9 @@ fun jsConnectToDevice() {
     js("if (window.connectToDevice) window.connectToDevice()")
 }
 
+@JsFun("(isVisible) => { if (window.toggleOscilloscopeVisibility) window.toggleOscilloscopeVisibility(isVisible); }")
+external fun toggleOscilloscopeJS(isVisible: Boolean)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HeaderTable(
@@ -201,16 +204,19 @@ fun HeaderTable(
                             modifier = Modifier
                                 .fillMaxHeight()
                                 .clickable {
-                                    // Переключаем состояние окна (открыто/закрыто) прямо во ViewModel
+                                    // Переключаем состояние окна
                                     vm.isOscilloscopeWindowOpen = !vm.isOscilloscopeWindowOpen
                                     println("Осциллограф открыт: ${vm.isOscilloscopeWindowOpen}")
+
+                                    // 🔥 Вызываем top-level функцию вместо js()
+                                    toggleOscilloscopeJS(vm.isOscilloscopeWindowOpen)
                                 }
                                 .padding(horizontal = 4.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ShowChart,
-                                null,
+                                contentDescription = null,
                                 modifier = Modifier.size(20.dp),
                                 tint = Color.Red
                             )
@@ -230,7 +236,7 @@ fun HeaderTable(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ArrowDropDown,
-                                null,
+                                contentDescription = null,
                                 modifier = Modifier.size(16.dp)
                             )
                         }

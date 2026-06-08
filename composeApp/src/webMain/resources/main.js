@@ -21,6 +21,20 @@ window.connectToDevice = async function() {
     }
 };
 
+// 🔥 Функция для переключения видимости осциллографа (вызывается из Kotlin)
+window.toggleOscilloscopeVisibility = function(isVisible) {
+    const table = document.querySelector('.param-table');
+    if (!table) return;
+
+    if (isVisible) {
+        table.classList.remove('hidden');
+        console.log('[Main] 🔍 Осциллограф показан');
+    } else {
+        table.classList.add('hidden');
+        console.log('[Main] 👁️ Осциллограф скрыт');
+    }
+};
+
 function initParamTable() {
     const tbody = document.getElementById('paramTableBody');
     if (!tbody) return;
@@ -85,7 +99,6 @@ function initParamTable() {
         }, 100 + idx * 50);
     });
 
-    // Клик для переключения активной строки
     tbody.addEventListener('click', function(e) {
         const row = e.target.closest('tr');
         if (!row) return;
@@ -93,7 +106,6 @@ function initParamTable() {
         row.classList.add('selected');
     });
 
-    // 🔥 Настраиваем ресайз столбцов
     setupColumnResize();
 }
 
@@ -102,7 +114,6 @@ function setupColumnResize() {
     const thead = table.querySelector('thead');
     const ths = thead.querySelectorAll('th');
 
-    // Добавляем ручки ресайза в каждый заголовок (кроме последнего)
     ths.forEach((th, idx) => {
         if (idx === ths.length - 1) return;
         const handle = document.createElement('div');
@@ -139,8 +150,6 @@ function setupColumnResize() {
             isResizing = false;
             currentTh = null;
             table.classList.remove('resizing');
-
-            // 🔥 Обновляем размеры canvas после ресайза
             updateCanvasSizes();
         }
     });
@@ -188,7 +197,7 @@ function setupContextMenu() {
     applyBtn.addEventListener('click', function() {
         if (currentPopupIndex === null) return;
 
-        const newHeight = parseInt(heightInput.value) || 60;
+        const newHeight = parseInt(heightInput.value) || 20;
         const newMax = maxInput.value.trim();
         const maxVal = newMax === '' ? null : parseFloat(newMax);
 
