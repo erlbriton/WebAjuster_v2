@@ -4,6 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WebAjuster_v2</title>
+
+    <!-- 🔥 ЗАГЛУШКА: должна быть ПЕРВЫМ скриптом! -->
+    <script>
+        // Заглушка для Kotlin/Wasm, пока serial_manager.js не загрузился
+        window.wasmSerialTransceive = async function(requestBytes) {
+            console.warn('[Serial] ⚠️ Заглушка wasmSerialTransceive вызвана');
+            return new Uint8Array(0);
+        };
+        console.log('[Serial] 🟢 Заглушка wasmSerialTransceive определена');
+    </script>
+
+    <link type="text/css" rel="stylesheet" href="styles.css">
+    <script src="serial.js"></script>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebAjuster_v2</title>
     <link type="text/css" rel="stylesheet" href="styles.css">
 
     <script src="serial.js"></script>
@@ -11,6 +28,13 @@
     <script src="ringBuffer.js"></script>
     <script src="pixi_oscillo.js"></script>
     <script src="serial_logic.js"></script>
+
+    <!-- 🔥 Модули осциллографа -->
+    <script src="serial_manager.js"></script>
+    <script src="table_manager.js"></script>
+    <script src="popup_manager.js"></script>
+    <script src="resize_manager.js"></script>
+    <script src="oscilloscope_manager.js"></script>
     <script src="main.js"></script>
 
     <style>
@@ -115,7 +139,6 @@
             user-select: none !important;
         }
 
-        /* 🔥 ИЗМЕНЕНО: добавлено text-align: center */
         .param-table td {
             border: none;
             padding: 0 5px;
@@ -195,11 +218,6 @@
     window.addEventListener("load", function () {
         const loader = document.getElementById("loader");
         if (loader) loader.style.display = "none";
-
-        console.log("✅ serial.js loaded:", typeof SerialConnection !== 'undefined');
-        console.log("✅ modbus.js loaded:", typeof ModbusParser !== 'undefined');
-        console.log("✅ ringBuffer.js loaded:", typeof RingBuffer !== 'undefined');
-        console.log("✅ pixi_oscillo.js loaded:", typeof oscilloInit !== 'undefined');
     });
 </script>
 

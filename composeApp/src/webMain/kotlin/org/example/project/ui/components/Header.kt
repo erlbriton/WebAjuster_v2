@@ -206,10 +206,11 @@ fun HeaderTable(
                                 .clickable {
                                     // Переключаем состояние окна
                                     vm.isOscilloscopeWindowOpen = !vm.isOscilloscopeWindowOpen
-                                    println("Осциллограф открыт: ${vm.isOscilloscopeWindowOpen}")
+                                    println("🔍 Осциллограф открыт: ${vm.isOscilloscopeWindowOpen}")
 
-                                    // 🔥 Вызываем top-level функцию вместо js()
+                                    // 🔥 Вызываем top-level функцию для JavaScript
                                     toggleOscilloscopeJS(vm.isOscilloscopeWindowOpen)
+                                    println("✅ toggleOscilloscopeJS вызван с параметром: ${vm.isOscilloscopeWindowOpen}")
                                 }
                                 .padding(horizontal = 4.dp),
                             contentAlignment = Alignment.Center
