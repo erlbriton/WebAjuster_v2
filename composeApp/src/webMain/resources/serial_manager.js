@@ -6,9 +6,17 @@ const SerialManager = {
     buffer: [],
     paused: false,
     onData: null,
+    // 🔥 Добавлено для осциллографа, не ломает подключение
+    oscilloAddresses: [],
 
     async connect() {
         try {
+            // 🔥 Проверяем, не открыт ли уже порт
+            if (this.port && this.isConnected) {
+                console.log('[Serial] ⚠️ Порт уже открыт');
+                return true;
+            }
+
             this.port = await navigator.serial.requestPort();
             await this.port.open({ baudRate: 115200 });
             console.log('[Serial] ✅ Порт открыт');
@@ -33,15 +41,19 @@ const SerialManager = {
         this._startReceiver();
     },
 
+    // 🔥 ИЗМЕНЕНО: читает адреса из oscilloAddresses пачкой
     _startSender() {
         (async () => {
             while (this.port && this.isConnected) {
-                if (this.paused) {
+                if (this.paused || this.oscilloAddresses.length === 0) {
                     await new Promise(r => setTimeout(r, 10));
                     continue;
                 }
                 try {
-                    const body = new Uint8Array([0x01, 0x03, 0x00, 0x2D, 0x00, 0x02]);
+                    const addr = this.oscilloAddresses[this.oscilloCurrentIdx];
+                    this.oscilloCurrentIdx = (this.oscilloCurrentIdx + 1) % this.oscilloAddresses.length;
+
+                    const body = new Uint8Array([0x01, 0x03, (addr >> 8) & 0xFF, addr & 0xFF, 0x00, 0x01]);
                     let crc = 0xFFFF;
                     for (let b of body) { crc ^= b; for (let i = 0; i < 8; i++) crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : crc >> 1; }
                     await this.writer.write(new Uint8Array([...body, crc & 0xFF, (crc >> 8) & 0xFF]));
@@ -50,11 +62,12 @@ const SerialManager = {
                     this.handleDisconnect(e);
                     break;
                 }
-                await new Promise(r => setTimeout(r, 100));
+                await new Promise(r => setTimeout(r, 5)); // 🔥 Минимальная задержка для скорости
             }
         })();
     },
 
+    // 🔥 ИЗМЕНЕНО: парсит ответ любой длины (не только 9 байт)
     _startReceiver() {
         (async () => {
             while (this.port && this.isConnected) {
@@ -63,28 +76,33 @@ const SerialManager = {
                     if (done) break;
                     if (!value) continue;
 
-                    // 🔥 ВАЖНО: пишем в this.buffer (тот же массив, что и SerialManager.buffer)
                     this.buffer.push(...value);
 
                     if (this.paused) continue;
 
-                    while (this.buffer.length >= 9) {
-                        if (this.buffer[0] === 0x01 && this.buffer[1] === 0x03 && this.buffer[2] === 0x04) {
+                    while (this.buffer.length >= 5) {
+                        if (this.buffer[0] === 0x01 && this.buffer[1] === 0x03) {
+                            const byteCount = this.buffer[2];
+                            const expectedLength = 3 + byteCount + 2;
+
+                            if (this.buffer.length < expectedLength) break; // Ждем остальное
+
                             let crc = 0xFFFF;
-                            for (let i = 0; i < 7; i++) {
+                            for (let i = 0; i < expectedLength - 2; i++) {
                                 crc ^= this.buffer[i];
                                 for (let j = 0; j < 8; j++) crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : crc >> 1;
                             }
 
-                            if (crc === (this.buffer[7] | (this.buffer[8] << 8))) {
-                                const v1 = (this.buffer[3] << 8) | this.buffer[4];
-                                const v2 = (this.buffer[5] << 8) | this.buffer[6];
-
+                            if (crc === (this.buffer[expectedLength - 2] | (this.buffer[expectedLength - 1] << 8))) {
+                                const values = [];
+                                for (let i = 0; i < byteCount; i += 2) {
+                                    values.push((this.buffer[3 + i] << 8) | this.buffer[4 + i]);
+                                }
                                 if (this.onData) {
-                                    this.onData([v1, v2], performance.now());
+                                    this.onData(values, performance.now());
                                 }
                             }
-                            this.buffer.splice(0, 9);
+                            this.buffer.splice(0, expectedLength);
                         } else {
                             this.buffer.shift();
                         }
@@ -116,7 +134,7 @@ const SerialManager = {
             dialog.id = 'disconnectDialog';
             dialog.innerHTML = `
                 <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border: 2px solid #f44336; border-radius: 8px; padding: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); z-index: 100000; min-width: 350px; text-align: center;">
-                    <div style="font-size: 48px; margin-bottom: 10px;">⚠️</div>
+                    <div style="font-size: 48px; margin-bottom: 10px;">️</div>
                     <h3 style="margin: 10px 0; color: #f44336;">Внимание!</h3>
                     <p id="disconnectMessage" style="margin: 15px 0; color: #666;">${message}</p>
                     <button onclick="document.getElementById('disconnectDialog').style.display='none'" style="padding: 10px 30px; background: #2196f3; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; margin-top: 10px;">Закрыть</button>
@@ -136,7 +154,7 @@ const SerialManager = {
     }
 };
 
-// 🔥 Глобальная функция для Kotlin/Wasm
+// 🔥 Глобальная функция для Kotlin/Wasm (оставлена без изменений)
 window.wasmSerialTransceive = async function(requestBytes) {
     const uint8Request = new Uint8Array(requestBytes.buffer, requestBytes.byteOffset, requestBytes.byteLength);
     const reqHex = Array.from(uint8Request).map(b => b.toString(16).padStart(2, '0')).join(' ');
@@ -147,25 +165,17 @@ window.wasmSerialTransceive = async function(requestBytes) {
         return new Uint8Array(0);
     }
 
-    // 1. Останавливаем осциллограф
     SerialManager.paused = true;
     console.log('[Serial] ⏸️ Осциллограф приостановлен');
 
     try {
-        // 2. 🔥 Ждём 300мс, чтобы _startSender гарантированно остановился
         await new Promise(r => setTimeout(r, 300));
-
-        // 3. 🔥 КРИТИЧНО: очищаем ТОТ ЖЕ массив, а не создаём новый!
-        //    Если сделать SerialManager.buffer = [], то _startReceiver
-        //    продолжит писать в старый массив, и ответы потеряются.
         SerialManager.buffer.splice(0, SerialManager.buffer.length);
         console.log('[Serial] 🧹 Буфер очищен, длина:', SerialManager.buffer.length);
 
-        // 4. Отправляем запрос
         await SerialManager.writer.write(uint8Request);
-        console.log('[Serial] 📤 Запрос отправлен');
+        console.log('[Serial]  Запрос отправлен');
 
-        // 5. Ждём ответ с таймаутом и логированием
         const timeout = 2000;
         const startTime = performance.now();
         let lastLogLen = 0;
@@ -173,7 +183,6 @@ window.wasmSerialTransceive = async function(requestBytes) {
         while (performance.now() - startTime < timeout) {
             const curLen = SerialManager.buffer.length;
 
-            // Логируем только при изменении размера буфера
             if (curLen > 0 && curLen !== lastLogLen) {
                 const hex = SerialManager.buffer.slice(0, Math.min(curLen, 30))
                     .map(b => b.toString(16).padStart(2, '0')).join(' ');
@@ -195,7 +204,6 @@ window.wasmSerialTransceive = async function(requestBytes) {
                 }
 
                 if (expectedLength > 0 && curLen >= expectedLength) {
-                    // Проверка CRC
                     let crc = 0xFFFF;
                     for (let i = 0; i < expectedLength - 2; i++) {
                         crc ^= SerialManager.buffer[i];
@@ -224,10 +232,10 @@ window.wasmSerialTransceive = async function(requestBytes) {
             await new Promise(r => setTimeout(r, 10));
         }
 
-        console.warn(`[Serial] ⚠️ ТАЙМАУТ. В буфере ${SerialManager.buffer.length} байт`);
+        console.warn(`[Serial] ️ ТАЙМАУТ. В буфере ${SerialManager.buffer.length} байт`);
         return new Uint8Array(0);
     } catch (e) {
-        console.error('[Serial] ❌ Ошибка transceive:', e.message);
+        console.error('[Serial]  Ошибка transceive:', e.message);
         return new Uint8Array(0);
     } finally {
         SerialManager.paused = false;
