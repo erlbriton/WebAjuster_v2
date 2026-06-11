@@ -54,13 +54,17 @@ setInterval(() => {
 
     for (const id in graphs) {
         const g = graphs[id];
-        if (!g.ctx || g.buffer.length === 0) continue;
+        if (!g.ctx) continue;
 
         g.ctx.clearRect(0, 0, g.w, g.h);
+
+        // Если буфер пуст, ничего не рисуем
+        if (g.buffer.length === 0) continue;
 
         const newestPoint = g.buffer[g.buffer.length - 1];
         const newestTime = newestPoint.t;
 
+        // Фильтруем видимые точки
         const visible = [];
         for (let p of g.buffer) {
             const age = newestTime - p.t;
@@ -70,9 +74,50 @@ setInterval(() => {
         }
 
         if (visible.length < 2) continue;
-
         visible.sort((a, b) => a.age - b.age);
 
+        // 🔥 ОПТИМИЗАЦИЯ ДЛЯ ДИСКРЕТНЫХ ПАРАМЕТРОВ
+        if (g.isDiscrete) {
+            // Для дискретных сигналов Y всегда фиксирован:
+            // 1 (High) -> Вверху (отступ 4px)
+            // 0 (Low)  -> Внизу (отступ 4px)
+            const yHigh = 4;
+            const yLow = g.h - 4;
+
+            g.ctx.strokeStyle = g.color;
+            g.ctx.lineWidth = 2;
+            g.ctx.beginPath();
+
+            let first = true;
+            let prevX, prevY;
+
+            for (let i = 0; i < visible.length; i++) {
+                const p = visible[i];
+                // Определяем уровень: > 0.5 считаем за 1, иначе 0
+                const isHigh = p.v > 0.5;
+                const y = isHigh ? yHigh : yLow;
+                const x = g.w - (p.age / TIME_WINDOW) * g.w;
+
+                if (first) {
+                    g.ctx.moveTo(x, y);
+                    first = false;
+                } else {
+                    // Рисуем "Ступеньку" (Square Wave)
+                    // Если уровень изменился, сначала рисуем вертикальную линию на позиции ПРЕДЫДУЩЕЙ точки
+                    if (y !== prevY) {
+                        g.ctx.lineTo(prevX, y);
+                    }
+                    // Затем горизонтальную линию до текущей точки
+                    g.ctx.lineTo(x, y);
+                }
+                prevX = x;
+                prevY = y;
+            }
+            g.ctx.stroke();
+            continue; // Переходим к следующему графику, минуя тяжелый код аналоговых
+        }
+
+        // 🔥 КОД ДЛЯ АНАЛОГОВЫХ ПАРАМЕТРОВ (стандартный)
         let minV = visible[0].v, maxV = visible[0].v;
         for (let i = 1; i < visible.length; i++) {
             if (visible[i].v < minV) minV = visible[i].v;
