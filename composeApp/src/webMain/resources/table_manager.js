@@ -88,6 +88,9 @@ const TableManager = {
             tbody.querySelectorAll('tr').forEach(r => r.classList.remove('selected'));
             row.classList.add('selected');
         });
+
+        // 🔥 НОВОЕ: Инициализация регулировки ширины столбцов
+        this.initColumnResize();
     },
 
     updateRow(index, hexValue, physicalValue) {
@@ -135,5 +138,86 @@ const TableManager = {
                 });
             }
         });
+    },
+
+    // 🔥 НОВАЯ ФУНКЦИЯ: Регулировка ширины столбцов мышкой
+    initColumnResize() {
+        const tbody = document.getElementById('paramTableBody');
+        if (!tbody) return;
+        const table = tbody.closest('table');
+        if (!table) return;
+
+        // Создаём colgroup, если его нет
+        let colgroup = table.querySelector('colgroup');
+        if (!colgroup) {
+            colgroup = document.createElement('colgroup');
+            // Начальные ширины: Name, Hex, Physical, Unit, Graph
+            const widths = [150, 80, 80, 50, 400];
+            widths.forEach(w => {
+                const col = document.createElement('col');
+                col.style.width = w + 'px';
+                colgroup.appendChild(col);
+            });
+            table.insertBefore(colgroup, table.firstChild);
+        }
+
+        const cols = colgroup.querySelectorAll('col');
+        const headers = table.querySelectorAll('thead th');
+
+        if (headers.length === 0) {
+            console.warn('[TableManager] ⚠️ Заголовки таблицы не найдены');
+            return;
+        }
+
+        // Добавляем ручки к заголовкам, если их ещё нет
+        headers.forEach((th) => {
+            if (th.querySelector('.resize-handle')) return;
+            const handle = document.createElement('div');
+            handle.className = 'resize-handle';
+            th.style.position = 'relative';
+            th.appendChild(handle);
+        });
+
+        let isResizing = false;
+        let currentCol = null;
+        let startX = 0;
+        let startWidth = 0;
+
+        headers.forEach((th, idx) => {
+            const handle = th.querySelector('.resize-handle');
+            if (!handle || !cols[idx]) return;
+
+            handle.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                isResizing = true;
+                currentCol = cols[idx];
+                startX = e.clientX;
+                startWidth = currentCol.offsetWidth || parseInt(currentCol.style.width) || 100;
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+            });
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing || !currentCol) return;
+            const newWidth = Math.max(40, startWidth + (e.clientX - startX));
+            currentCol.style.width = newWidth + 'px';
+
+            // Если изменилась колонка Graph (последняя) — обновляем размеры canvas
+            if (currentCol === cols[cols.length - 1]) {
+                this.updateAllCanvasSizes(window.scopeWorker);
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isResizing) {
+                isResizing = false;
+                currentCol = null;
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+            }
+        });
+
+        console.log('[TableManager] ✅ Column resize инициализирован');
     }
 };
