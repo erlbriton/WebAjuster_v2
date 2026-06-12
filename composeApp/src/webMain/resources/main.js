@@ -135,7 +135,13 @@ window.oscilloStart = function(registersStr, baudRate) {
 
         const addresses = Array.from(uniqueAddresses).sort((a, b) => a - b);
         SerialManager.oscilloAddresses = addresses;
+        SerialManager.oscilloChunks = SerialManager._buildChunks(addresses);
         SerialManager.oscilloCurrentIdx = 0;
+
+        console.log('[Main] 📦 Чанки:', SerialManager.oscilloChunks.length);
+        SerialManager.oscilloChunks.forEach((c, i) => {
+            console.log(`  Чанк ${i}: start=0x${c.start.toString(16)}, count=${c.count}`);
+        });
 
         // 🔥 ОТЛАДКА: показываем карту регистров
         console.log('[Main] 📋 Карта регистров:');

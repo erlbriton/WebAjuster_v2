@@ -7,8 +7,10 @@ const SerialManager = {
     paused: false,
     onData: null,
     oscilloAddresses: [],
-    oscilloCurrentIdx: 0,  // 🔥 ИСПРАВЛЕНО: добавлена инициализация
-    lastRequestAddr: 0,    // 🔥 ИСПРАВЛЕНО: запоминаем адрес запроса
+    oscilloChunks: [],            // 🔥 НОВОЕ: массив чанков {start, count}
+    oscilloCurrentIdx: 0,
+    lastRequestAddr: 0,
+    lastRequestChunk: null,       // 🔥 НОВОЕ: последний запрошенный чанк
 
     async connect() {
         try {
@@ -41,19 +43,58 @@ const SerialManager = {
         this._startReceiver();
     },
 
+// 🔥 НОВЫЙ МЕТОД: группировка адресов в чанки
+_buildChunks(addresses, maxChunk = 125) {
+    const sorted = [...addresses].sort((a, b) => a - b);
+    const chunks = [];
+    let start = null, prev = null;
+
+    const addRange = (s, e) => {
+        let cur = s;
+        while (cur <= e) {
+            const count = Math.min(e - cur + 1, maxChunk);
+            chunks.push({ start: cur, count: count });
+            cur += count;
+        }
+    };
+
+    for (const addr of sorted) {
+        if (start === null) {
+            start = addr;
+            prev = addr;
+        } else if (addr === prev + 1) {
+            prev = addr;
+        } else {
+            addRange(start, prev);
+            start = addr;
+            prev = addr;
+        }
+    }
+    if (start !== null) {
+        addRange(start, prev);
+    }
+    return chunks;
+},
+
     _startSender() {
         (async () => {
             while (this.port && this.isConnected) {
-                if (this.paused || this.oscilloAddresses.length === 0) {
+                if (this.paused || this.oscilloChunks.length === 0) {
                     await new Promise(r => setTimeout(r, 10));
                     continue;
                 }
                 try {
-                    const addr = this.oscilloAddresses[this.oscilloCurrentIdx];
-                    this.lastRequestAddr = addr;  // 🔥 ИСПРАВЛЕНО: запоминаем адрес ПЕРЕД увеличением индекса
-                    this.oscilloCurrentIdx = (this.oscilloCurrentIdx + 1) % this.oscilloAddresses.length;
+                    const chunk = this.oscilloChunks[this.oscilloCurrentIdx];
+                    this.lastRequestAddr = chunk.start;    // для совместимости
+                    this.lastRequestChunk = chunk;         // 🔥 НОВОЕ: сохраняем весь чанк
+                    this.oscilloCurrentIdx = (this.oscilloCurrentIdx + 1) % this.oscilloChunks.length;
 
-                    const body = new Uint8Array([0x01, 0x03, (addr >> 8) & 0xFF, addr & 0xFF, 0x00, 0x01]);
+                    // 🔥 ИЗМЕНЕНО: читаем chunk.count регистров вместо 1
+                    const body = new Uint8Array([
+                        0x01, 0x03,
+                        (chunk.start >> 8) & 0xFF, chunk.start & 0xFF,
+                        (chunk.count >> 8) & 0xFF, chunk.count & 0xFF
+                    ]);
                     let crc = 0xFFFF;
                     for (let b of body) { crc ^= b; for (let i = 0; i < 8; i++) crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : crc >> 1; }
                     await this.writer.write(new Uint8Array([...body, crc & 0xFF, (crc >> 8) & 0xFF]));
@@ -62,7 +103,7 @@ const SerialManager = {
                     this.handleDisconnect(e);
                     break;
                 }
-                await new Promise(r => setTimeout(r, 5));
+                await new Promise(r => setTimeout(r, 2));  // 🔥 Уменьшено с 5 до 2 мс
             }
         })();
     },
@@ -98,9 +139,8 @@ const SerialManager = {
                                     values.push((this.buffer[3 + i] << 8) | this.buffer[4 + i]);
                                 }
 
-                                if (this.onData) {
-                                    // 🔥 ИСПРАВЛЕНО: передаем lastRequestAddr (адрес запрошенного регистра)
-                                    this.onData(values, this.lastRequestAddr, performance.now());
+                                if (this.onData && this.lastRequestChunk) {
+                                    this.onData(values, this.lastRequestChunk.start, performance.now());
                                 }
                             }
                             this.buffer.splice(0, expectedLength);
