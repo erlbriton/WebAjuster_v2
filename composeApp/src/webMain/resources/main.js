@@ -45,11 +45,6 @@ async function startSerial() {
                         value = (regValue >> bit) & 1;
                     }
 
-                    // 🔥 ОТЛАДКА: показываем извлечение битов
-                    if (bit !== -1) {
-                        console.log(`[Main] 🔍 Регистр 0x${regAddr.toString(16)}, бит ${bit} → значение ${value} (регистр=0x${regValue.toString(16)}, график=${graphIdx})`);
-                    }
-
                     TableManager.updateRow(graphIdx, value, value);
                     scopeWorker.postMessage({
                         type: 'data',
@@ -58,8 +53,6 @@ async function startSerial() {
                         t: timestamp
                     });
                 });
-            } else {
-                console.warn(`[Main] ⚠️ Регистр 0x${regAddr.toString(16)} не найден в карте`);
             }
         });
     };
@@ -136,6 +129,19 @@ window.oscilloStart = function(registersStr, baudRate) {
         const addresses = Array.from(uniqueAddresses).sort((a, b) => a - b);
         SerialManager.oscilloAddresses = addresses;
         SerialManager.oscilloChunks = SerialManager._buildChunks(addresses);
+
+        console.log('[Main] 📊 Статистика чанков:');
+        console.log('  Всего адресов:', addresses.length);
+        console.log('  Всего чанков:', SerialManager.oscilloChunks.length);
+        console.log('  Средний размер:', (addresses.length / SerialManager.oscilloChunks.length).toFixed(1));
+
+        let totalRegs = 0;
+        SerialManager.oscilloChunks.forEach((c, i) => {
+            totalRegs += c.count;
+            console.log(`  Чанк ${i}: регистры 0x${c.start.toString(16)}-0x${(c.start + c.count - 1).toString(16)} (${c.count} шт)`);
+        });
+        console.log('  Суммарно регистров в чанках:', totalRegs);
+
         SerialManager.oscilloCurrentIdx = 0;
 
         console.log('[Main] 📦 Чанки:', SerialManager.oscilloChunks.length);

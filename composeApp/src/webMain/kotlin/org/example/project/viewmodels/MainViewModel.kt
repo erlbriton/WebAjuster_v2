@@ -254,7 +254,7 @@ class MainViewModel {
                 return
             }
 
-            println("=== ДИАГНОСТИКА RAM ===")
+            println("=== ДИАГНОСТИКА ПАМЯТИ ===")
             println("Всего параметров в Flash: ${device.flashParameters.size}")
             println("Всего параметров в RAM: ${device.ramParameters.size}")
             println("Всего параметров в CD: ${device.cdParameters.size}")

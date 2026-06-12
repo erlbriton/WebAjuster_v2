@@ -44,7 +44,8 @@ const SerialManager = {
     },
 
 // 🔥 НОВЫЙ МЕТОД: группировка адресов в чанки
-_buildChunks(addresses, maxChunk = 125) {
+// 🔥 НОВЫЙ МЕТОД: группировка адресов в чанки с допусками пропусков
+_buildChunks(addresses, maxChunk = 125, maxGap = 3) {
     const sorted = [...addresses].sort((a, b) => a - b);
     const chunks = [];
     let start = null, prev = null;
@@ -62,9 +63,11 @@ _buildChunks(addresses, maxChunk = 125) {
         if (start === null) {
             start = addr;
             prev = addr;
-        } else if (addr === prev + 1) {
+        } else if (addr - prev <= maxGap) {
+            // 🔥 НОВОЕ: допускаем пропуск до maxGap регистров
             prev = addr;
         } else {
+            // Большой пропуск — закрываем предыдущий range
             addRange(start, prev);
             start = addr;
             prev = addr;
