@@ -129,31 +129,8 @@ window.oscilloStart = function(registersStr, baudRate) {
         const addresses = Array.from(uniqueAddresses).sort((a, b) => a - b);
         SerialManager.oscilloAddresses = addresses;
         SerialManager.oscilloChunks = SerialManager._buildChunks(addresses);
-
-        console.log('[Main] 📊 Статистика чанков:');
-        console.log('  Всего адресов:', addresses.length);
-        console.log('  Всего чанков:', SerialManager.oscilloChunks.length);
-        console.log('  Средний размер:', (addresses.length / SerialManager.oscilloChunks.length).toFixed(1));
-
-        let totalRegs = 0;
-        SerialManager.oscilloChunks.forEach((c, i) => {
-            totalRegs += c.count;
-            console.log(`  Чанк ${i}: регистры 0x${c.start.toString(16)}-0x${(c.start + c.count - 1).toString(16)} (${c.count} шт)`);
-        });
-        console.log('  Суммарно регистров в чанках:', totalRegs);
-
         SerialManager.oscilloCurrentIdx = 0;
 
-        console.log('[Main] 📦 Чанки:', SerialManager.oscilloChunks.length);
-        SerialManager.oscilloChunks.forEach((c, i) => {
-            console.log(`  Чанк ${i}: start=0x${c.start.toString(16)}, count=${c.count}`);
-        });
-
-        // 🔥 ОТЛАДКА: показываем карту регистров
-        console.log('[Main] 📋 Карта регистров:');
-        for (const [addr, bits] of Object.entries(regToBitsMap)) {
-            console.log(`  Регистр 0x${parseInt(addr).toString(16)}:`, bits);
-        }
         console.log('[Main] 🚀 Запущен с ' + addresses.length + ' адресами');
     };
 
@@ -169,6 +146,13 @@ window.buildLeftPanel = function(jsonStr) {
     console.log('[Main] 🏗️ buildLeftPanel вызван, длина: ' + jsonStr.length);
     try {
         window.ramParameters = JSON.parse(jsonStr);
+
+        // 🔥 ВРЕМЕННЫЙ ЛОГ: покажи первые 3 параметра полностью
+        console.log('[Main]  Первые 3 параметра:');
+        for (let i = 0; i < Math.min(3, window.ramParameters.length); i++) {
+            console.log(`  [${i}]:`, JSON.stringify(window.ramParameters[i]));
+        }
+
         console.log('[Main] ✅ Сохранено ' + window.ramParameters.length + ' параметров');
     } catch (e) {
         console.error('[Main] ❌ Ошибка JSON:', e.message);
@@ -188,15 +172,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const heightInput = document.getElementById('popupHeight');
     const maxInput = document.getElementById('popupMax');
     const autoMaxCheckbox = document.getElementById('popupAutoMax');
+    const scaleInput = document.getElementById('popupScale');  // 🔥 НОВОЕ
 
     // 🔥 Кнопка "Применить"
     applyBtn.addEventListener('click', () => {
         const index = parseInt(popup.dataset.paramIndex);
         const height = heightInput.value;
         const maxVal = autoMaxCheckbox.checked ? '' : maxInput.value;
+        const scale = scaleInput.value;  // 🔥 НОВОЕ
 
         if (TableManager.applyParamSettings) {
-            TableManager.applyParamSettings(index, height, maxVal);
+            TableManager.applyParamSettings(index, height, maxVal, scale);  // 🔥 Передаём scale
         }
         TableManager.hideParamSettings();
     });
@@ -207,12 +193,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // 🔥 Enter в полях = Применить
-    [heightInput, maxInput].forEach(input => {
-        input.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                applyBtn.click();
-            }
-        });
+    [heightInput, maxInput, scaleInput].forEach(input => {  // 🔥 Добавили scaleInput
+        if (input) {
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    applyBtn.click();
+                }
+            });
+        }
     });
 
     // 🔥 Авто-максимум: отключает поле ввода

@@ -278,8 +278,9 @@ class MainViewModel {
                 val name = param.idName.replace("\"", "'")
                 val unit = param.unit.replace("\"", "'")
                 val reg = param.modbusReg.replace("\"", "'")
+                val description = (param.description ?: "").replace("\"", "'")  // 🔥 НОВОЕ
 
-                val jsonPart = "{\"name\":\"$name\",\"register\":\"$reg\",\"unit\":\"$unit\",\"scale\":${param.vars},\"isDiscrete\":$isDisc}"
+                val jsonPart = "{\"name\":\"$name\",\"description\":\"$description\",\"register\":\"$reg\",\"unit\":\"$unit\",\"scale\":${param.vars},\"isDiscrete\":$isDisc}"
                 jsonParts.add(jsonPart)
             }
 
