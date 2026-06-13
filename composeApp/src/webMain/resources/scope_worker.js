@@ -1,11 +1,17 @@
 const graphs = {};
-const TIME_WINDOW = 32000;
+const TIME_WINDOW = 16000;
 const MAX_POINTS = 5000;
 const MAX_GAP = 1000;
 
 const COLORS = [
-    '#4A90E2', '#E24A4A', '#50C878', '#FFB347',
-    '#9B59B6', '#1ABC9C', '#F39C12', '#E74C3C',
+    '#0066FF',  // 🔥 Ярко-синий
+    '#FF0033',  // 🔥 Ярко-красный
+    '#00CC44',  // 🔥 Ярко-зелёный
+    '#FF8800',  // 🔥 Ярко-оранжевый
+    '#AA00FF',  // 🔥 Ярко-фиолетовый
+    '#00CCCC',  // 🔥 Ярко-бирюзовый
+    '#FFCC00',  // 🔥 Ярко-жёлтый
+    '#FF0088',  // 🔥 Ярко-розовый
 ];
 
 self.onmessage = (e) => {
@@ -20,12 +26,16 @@ self.onmessage = (e) => {
             h: msg.height || c.height,
             buffer: [],
             settings: { maxVal: null },
-            color: COLORS[msg.id % COLORS.length]
+            color: COLORS[msg.id % COLORS.length],
+            isDiscrete: msg.isDiscrete || false,
+            lastValue: null,
+            lastUpdateTime: 0
         };
     }
     else if (msg.type === 'data') {
         const g = graphs[msg.id];
         if (g) {
+            // 🔥 ИЗМЕНЕНО: для дискретных тоже храним буфер точек
             g.buffer.push({ t: msg.t, v: msg.v1 });
             if (g.buffer.length > MAX_POINTS) g.buffer.shift();
         }
@@ -49,8 +59,16 @@ self.onmessage = (e) => {
     }
 };
 
-setInterval(() => {
-    const now = performance.now();
+let lastFrameTime = 0;
+const TARGET_FPS = 60;
+const FRAME_INTERVAL = 1000 / TARGET_FPS;
+
+function renderLoop(timestamp) {
+    if (timestamp - lastFrameTime < FRAME_INTERVAL) {
+        requestAnimationFrame(renderLoop);
+        return;
+    }
+    lastFrameTime = timestamp;
 
     for (const id in graphs) {
         const g = graphs[id];
@@ -58,13 +76,88 @@ setInterval(() => {
 
         g.ctx.clearRect(0, 0, g.w, g.h);
 
-        // Если буфер пуст, ничего не рисуем
+        // Отрисовка дискретных параметров (ступенчатая функция)
+        if (g.isDiscrete) {
+            if (g.buffer.length === 0) continue;
+
+            const newestPoint = g.buffer[g.buffer.length - 1];
+            const newestTime = newestPoint.t;
+
+            const visible = [];
+            for (let p of g.buffer) {
+                const age = newestTime - p.t;
+                if (age >= 0 && age <= TIME_WINDOW) {
+                    visible.push({ ...p, age: age });
+                }
+            }
+
+            if (visible.length === 0) continue;
+            visible.sort((a, b) => a.age - b.age);
+
+            // Определяем уровни: 0 = низ, 1 = верх
+            const yLow = g.h - 4;
+            const yHigh = 4;
+
+            g.ctx.globalAlpha = 1.0;
+            g.ctx.strokeStyle = g.color;
+            g.ctx.lineWidth = 1.0;
+            g.ctx.lineJoin = 'miter';  // 🔥 Острые углы для вертикальных переходов
+            g.ctx.lineCap = 'butt';     // 🔥 Прямые концы линий
+
+            g.ctx.beginPath();
+
+            // 🔥 Начинаем с левой края на уровне первой точки
+            const firstP = visible[0];
+            const firstX = g.w - (firstP.age / TIME_WINDOW) * g.w;
+            const firstY = firstP.v >= 0.5 ? yHigh : yLow;
+            g.ctx.moveTo(0, firstY);
+            g.ctx.lineTo(firstX, firstY);
+
+            // 🔥 Рисуем ступенчатую функцию
+            for (let i = 0; i < visible.length; i++) {
+                const p = visible[i];
+                const x = g.w - (p.age / TIME_WINDOW) * g.w;
+                const y = p.v >= 0.5 ? yHigh : yLow;
+
+                if (i > 0) {
+                    const prevP = visible[i - 1];
+                    const timeGap = p.t - prevP.t;
+
+                    if (timeGap > MAX_GAP) {
+                        // 🔥 Разрыв — начинаем новую линию
+                        g.ctx.stroke();
+                        g.ctx.beginPath();
+                        g.ctx.moveTo(x, y);
+                    } else {
+                        // 🔥 Вертикальный переход (если значение изменилось)
+                        if (p.v !== prevP.v) {
+                            g.ctx.lineTo(x, prevP.v >= 0.5 ? yHigh : yLow);
+                            g.ctx.lineTo(x, y);
+                        }
+                    }
+                }
+
+                // 🔥 Горизонтальная линия до следующей точки (или до правого края)
+                if (i < visible.length - 1) {
+                    const nextP = visible[i + 1];
+                    const nextX = g.w - (nextP.age / TIME_WINDOW) * g.w;
+                    g.ctx.lineTo(nextX, y);
+                } else {
+                    // 🔥 Последняя точка — продолжаем до правого края
+                    g.ctx.lineTo(g.w, y);
+                }
+            }
+
+            g.ctx.stroke();
+            continue;
+        }
+
+        // Отрисовка аналоговых параметров
         if (g.buffer.length === 0) continue;
 
         const newestPoint = g.buffer[g.buffer.length - 1];
         const newestTime = newestPoint.t;
 
-        // Фильтруем видимые точки
         const visible = [];
         for (let p of g.buffer) {
             const age = newestTime - p.t;
@@ -76,48 +169,6 @@ setInterval(() => {
         if (visible.length < 2) continue;
         visible.sort((a, b) => a.age - b.age);
 
-        // 🔥 ОПТИМИЗАЦИЯ ДЛЯ ДИСКРЕТНЫХ ПАРАМЕТРОВ
-        if (g.isDiscrete) {
-            // Для дискретных сигналов Y всегда фиксирован:
-            // 1 (High) -> Вверху (отступ 4px)
-            // 0 (Low)  -> Внизу (отступ 4px)
-            const yHigh = 4;
-            const yLow = g.h - 4;
-
-            g.ctx.strokeStyle = g.color;
-            g.ctx.lineWidth = 2;
-            g.ctx.beginPath();
-
-            let first = true;
-            let prevX, prevY;
-
-            for (let i = 0; i < visible.length; i++) {
-                const p = visible[i];
-                // Определяем уровень: > 0.5 считаем за 1, иначе 0
-                const isHigh = p.v > 0.5;
-                const y = isHigh ? yHigh : yLow;
-                const x = g.w - (p.age / TIME_WINDOW) * g.w;
-
-                if (first) {
-                    g.ctx.moveTo(x, y);
-                    first = false;
-                } else {
-                    // Рисуем "Ступеньку" (Square Wave)
-                    // Если уровень изменился, сначала рисуем вертикальную линию на позиции ПРЕДЫДУЩЕЙ точки
-                    if (y !== prevY) {
-                        g.ctx.lineTo(prevX, y);
-                    }
-                    // Затем горизонтальную линию до текущей точки
-                    g.ctx.lineTo(x, y);
-                }
-                prevX = x;
-                prevY = y;
-            }
-            g.ctx.stroke();
-            continue; // Переходим к следующему графику, минуя тяжелый код аналоговых
-        }
-
-        // 🔥 КОД ДЛЯ АНАЛОГОВЫХ ПАРАМЕТРОВ (стандартный)
         let minV = visible[0].v, maxV = visible[0].v;
         for (let i = 1; i < visible.length; i++) {
             if (visible[i].v < minV) minV = visible[i].v;
@@ -135,8 +186,11 @@ setInterval(() => {
             range = maxV - minV || 1;
         }
 
+        g.ctx.globalAlpha = 1.0;
         g.ctx.strokeStyle = g.color;
-        g.ctx.lineWidth = 1.5;
+        g.ctx.lineWidth = 1.0;
+        g.ctx.lineJoin = 'round';
+        g.ctx.lineCap = 'round';
         g.ctx.beginPath();
 
         let drawing = false;
@@ -162,4 +216,8 @@ setInterval(() => {
         }
         g.ctx.stroke();
     }
-}, 16);
+
+    requestAnimationFrame(renderLoop);
+}
+
+requestAnimationFrame(renderLoop);
