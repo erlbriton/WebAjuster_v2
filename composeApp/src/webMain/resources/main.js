@@ -178,4 +178,64 @@ window.buildLeftPanel = function(jsonStr) {
 
 window.updateLeftPanelValues = function(jsonStr) {};
 
+// 🔥 Обработчики popup настроек
+document.addEventListener('DOMContentLoaded', () => {
+    const popup = document.getElementById('paramSettingsPopup');
+    if (!popup) return;
+
+    const applyBtn = document.getElementById('popupApply');
+    const cancelBtn = document.getElementById('popupCancel');
+    const heightInput = document.getElementById('popupHeight');
+    const maxInput = document.getElementById('popupMax');
+    const autoMaxCheckbox = document.getElementById('popupAutoMax');
+
+    // 🔥 Кнопка "Применить"
+    applyBtn.addEventListener('click', () => {
+        const index = parseInt(popup.dataset.paramIndex);
+        const height = heightInput.value;
+        const maxVal = autoMaxCheckbox.checked ? '' : maxInput.value;
+
+        if (TableManager.applyParamSettings) {
+            TableManager.applyParamSettings(index, height, maxVal);
+        }
+        TableManager.hideParamSettings();
+    });
+
+    // 🔥 Кнопка "Отмена"
+    cancelBtn.addEventListener('click', () => {
+        TableManager.hideParamSettings();
+    });
+
+    // 🔥 Enter в полях = Применить
+    [heightInput, maxInput].forEach(input => {
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                applyBtn.click();
+            }
+        });
+    });
+
+    // 🔥 Авто-максимум: отключает поле ввода
+    autoMaxCheckbox.addEventListener('change', () => {
+        maxInput.disabled = autoMaxCheckbox.checked;
+        if (autoMaxCheckbox.checked) {
+            maxInput.value = '';
+        }
+    });
+
+    // 🔥 Клик вне popup = Отмена
+    document.addEventListener('click', (e) => {
+        if (popup.style.display === 'block' && !popup.contains(e.target)) {
+            TableManager.hideParamSettings();
+        }
+    });
+
+    // 🔥 Escape = Отмена
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && popup.style.display === 'block') {
+            TableManager.hideParamSettings();
+        }
+    });
+});
+
 console.log('[Main] ✅ main.js загружен');

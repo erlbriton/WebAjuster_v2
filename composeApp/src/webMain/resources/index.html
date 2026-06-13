@@ -250,11 +250,34 @@
     </table>
 </div>
 
-<div id="paramSettingsPopup">
-    <div style="font-weight:bold; margin-bottom:8px; border-bottom:1px solid #ccc; padding-bottom:4px;">Настройки параметра</div>
-    <label>Высота строки (px): <input type="number" id="popupHeight" min="10" max="200"></label>
-    <label>Максимум сигнала: <input type="number" id="popupMax" placeholder="Авто"></label>
-    <button id="popupApply">Применить</button>
+<div id="paramSettingsPopup" style="display:none; position:fixed; background:#fff; border:1px solid #888; padding:12px; z-index:10000; box-shadow:0 4px 12px rgba(0,0,0,0.3); font-family:monospace; font-size:13px; min-width:280px;">
+    <div style="font-weight:bold; margin-bottom:10px; border-bottom:1px solid #ccc; padding-bottom:6px;">
+        Настройки: <span id="popupParamName" style="color:#1976d2;"></span>
+    </div>
+
+    <label style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <span>Высота (px):</span>
+        <input type="number" id="popupHeight" min="10"  style="width:80px; text-align:right; font-family:monospace; padding:2px 4px;">
+    </label>
+
+    <label style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <span>Максимум:</span>
+        <input type="number" id="popupMax" placeholder="Авто" style="width:100px; text-align:right; font-family:monospace; padding:2px 4px;">
+    </label>
+
+    <label style="display:flex; align-items:center; margin-bottom:12px; cursor:pointer;">
+        <input type="checkbox" id="popupAutoMax" style="margin-right:6px;">
+        <span>Автоматически</span>
+    </label>
+
+    <div style="display:flex; gap:8px;">
+        <button id="popupApply" style="flex:1; padding:6px 12px; background:#2196f3; color:white; border:none; border-radius:4px; cursor:pointer; font-family:monospace; font-size:13px;">
+            Применить
+        </button>
+        <button id="popupCancel" style="flex:1; padding:6px 12px; background:#e0e0e0; color:#333; border:1px solid #999; border-radius:4px; cursor:pointer; font-family:monospace; font-size:13px;">
+            Отмена
+        </button>
+    </div>
 </div>
 
 </body>

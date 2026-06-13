@@ -1,6 +1,7 @@
 const TableManager = {
     DEFAULT_HEIGHT: 20,
     params: [],
+    paramSettings: {},  // 🔥 НОВОЕ: хранилище настроек для каждого параметра
 
     init(scopeWorker) {
         const tbody = document.getElementById('paramTableBody');
@@ -89,8 +90,8 @@ const TableManager = {
             row.classList.add('selected');
         });
 
-        // 🔥 НОВОЕ: Инициализация регулировки ширины столбцов
         this.initColumnResize();
+        this.initContextMenu();
     },
 
     updateRow(index, hexValue, physicalValue) {
@@ -140,18 +141,15 @@ const TableManager = {
         });
     },
 
-    // 🔥 НОВАЯ ФУНКЦИЯ: Регулировка ширины столбцов мышкой
     initColumnResize() {
         const tbody = document.getElementById('paramTableBody');
         if (!tbody) return;
         const table = tbody.closest('table');
         if (!table) return;
 
-        // Создаём colgroup, если его нет
         let colgroup = table.querySelector('colgroup');
         if (!colgroup) {
             colgroup = document.createElement('colgroup');
-            // Начальные ширины: Name, Hex, Physical, Unit, Graph
             const widths = [150, 80, 80, 50, 400];
             widths.forEach(w => {
                 const col = document.createElement('col');
@@ -169,7 +167,6 @@ const TableManager = {
             return;
         }
 
-        // Добавляем ручки к заголовкам, если их ещё нет
         headers.forEach((th) => {
             if (th.querySelector('.resize-handle')) return;
             const handle = document.createElement('div');
@@ -203,7 +200,6 @@ const TableManager = {
             const newWidth = Math.max(40, startWidth + (e.clientX - startX));
             currentCol.style.width = newWidth + 'px';
 
-            // Если изменилась колонка Graph (последняя) — обновляем размеры canvas
             if (currentCol === cols[cols.length - 1]) {
                 this.updateAllCanvasSizes(window.scopeWorker);
             }
@@ -219,5 +215,86 @@ const TableManager = {
         });
 
         console.log('[TableManager] ✅ Column resize инициализирован');
+    },
+
+    initContextMenu() {
+        const tbody = document.getElementById('paramTableBody');
+        if (!tbody) return;
+
+        tbody.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            const row = e.target.closest('tr');
+            if (!row) return;
+
+            const index = Array.from(tbody.querySelectorAll('tr')).indexOf(row);
+            if (index === -1) return;
+
+            this.showParamSettings(e.clientX, e.clientY, index);
+        });
+    },
+
+    showParamSettings(x, y, index) {
+        const popup = document.getElementById('paramSettingsPopup');
+        if (!popup) return;
+
+        const param = this.params[index];
+        if (!param) return;
+
+        // 🔥 Получаем сохранённые настройки (или дефолтные)
+        const settings = this.getParamSettings(index);
+
+        document.getElementById('popupParamName').textContent = param.name;
+        document.getElementById('popupHeight').value = settings.height;
+        document.getElementById('popupMax').value = settings.maxVal !== null ? settings.maxVal : '';
+        document.getElementById('popupAutoMax').checked = settings.maxVal === null;
+        document.getElementById('popupMax').disabled = settings.maxVal === null;
+
+        popup.style.left = x + 'px';
+        popup.style.top = y + 'px';
+        popup.style.display = 'block';
+        popup.dataset.paramIndex = index;
+
+        setTimeout(() => document.getElementById('popupHeight').focus(), 10);
+    },
+
+    getParamSettings(index) {
+        // 🔥 Возвращаем сохранённые настройки или дефолтные
+        return this.paramSettings[index] || {
+            height: this.DEFAULT_HEIGHT,
+            maxVal: null
+        };
+    },
+
+    applyParamSettings(index, height, maxVal) {
+        // 🔥 Сохраняем настройки
+        this.paramSettings[index] = {
+            height: height ? parseInt(height) : this.DEFAULT_HEIGHT,
+            maxVal: (maxVal === '' || maxVal === null) ? null : parseFloat(maxVal)
+        };
+
+        // 🔥 Применяем высоту строки
+        if (height && parseInt(height) >= 10) {
+            this.setRowHeight(index, parseInt(height));
+        }
+
+        // 🔥 Отправляем настройки в worker
+        if (window.scopeWorker) {
+            window.scopeWorker.postMessage({
+                type: 'updateSettings',
+                id: index,
+                width: undefined,
+                height: this.paramSettings[index].height,
+                maxVal: this.paramSettings[index].maxVal
+            });
+        }
+
+        console.log(`[TableManager] ✅ Применены настройки для параметра ${index}: высота=${this.paramSettings[index].height}, макс=${this.paramSettings[index].maxVal}`);
+    },
+
+    hideParamSettings() {
+        const popup = document.getElementById('paramSettingsPopup');
+        if (popup) {
+            popup.style.display = 'none';
+        }
     }
 };
