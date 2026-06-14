@@ -84,12 +84,22 @@ const TableManager = {
             }
         });
 
-        tbody.addEventListener('click', function(e) {
-            const row = e.target.closest('tr');
-            if (!row) return;
-            tbody.querySelectorAll('tr').forEach(r => r.classList.remove('selected'));
-            row.classList.add('selected');
-        });
+               tbody.addEventListener('click', function(e) {
+                   const row = e.target.closest('tr');
+                   if (!row) return;
+                   tbody.querySelectorAll('tr').forEach(r => r.classList.remove('selected'));
+                   row.classList.add('selected');
+
+                   // 🔥 НОВОЕ: вставляем имя параметра в поле ввода
+                   const paramName = row.cells[0]?.textContent;
+                   const userInputField = document.getElementById('userInputField');
+                   if (userInputField && paramName) {
+                       userInputField.value = paramName + '=';
+                       userInputField.focus();
+                       // Ставим курсор в конец
+                       userInputField.setSelectionRange(userInputField.value.length, userInputField.value.length);
+                   }
+               });
 
         this.initColumnResize();
         this.initContextMenu();
