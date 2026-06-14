@@ -13,13 +13,13 @@ const TableManager = {
             : [];
 
         if (sourceParams.length === 0) {
-            console.warn('[TableManager] ️ RAM-параметры не загружены');
+            console.warn('[TableManager] ⚠️ RAM-параметры не загружены');
             return;
         }
 
         this.params = sourceParams.map((param, idx) => ({
             name: param.name,
-            description: param.description || '',  // 🔥 Берём из JSON
+            description: param.description || '',
             hexId: `hex-${idx}`,
             physId: `phys-${idx}`,
             graphId: `graph-${idx}`,
@@ -65,23 +65,23 @@ const TableManager = {
             canvas.height = this.DEFAULT_HEIGHT;
             graphCell.appendChild(canvas);
 
-                                 row.appendChild(graphCell);
-                                 tbody.appendChild(row);
+            row.appendChild(graphCell);
+            tbody.appendChild(row);
 
-                                 // 🔥 Инициализация графика мгновенно (без искусственной задержки)
-                                 try {
-                                     const offscreen = canvas.transferControlToOffscreen();
-                                     scopeWorker.postMessage({
-                                         type: 'initGraph',
-                                         id: param.graphIdx,
-                                         canvas: offscreen,
-                                         width: 400,
-                                         height: this.DEFAULT_HEIGHT,
-                                         isDiscrete: param.isDiscrete
-                                     }, [offscreen]);
-                                 } catch (e) {
-                                     console.error(`[TableManager] ❌ Ошибка инициализации графика #${param.graphIdx}:`, e);
-                                 }
+            // 🔥 Инициализация графика мгновенно (без искусственной задержки)
+            try {
+                const offscreen = canvas.transferControlToOffscreen();
+                scopeWorker.postMessage({
+                    type: 'initGraph',
+                    id: param.graphIdx,
+                    canvas: offscreen,
+                    width: 400,
+                    height: this.DEFAULT_HEIGHT,
+                    isDiscrete: param.isDiscrete
+                }, [offscreen]);
+            } catch (e) {
+                console.error(`[TableManager] ❌ Ошибка инициализации графика #${param.graphIdx}:`, e);
+            }
         });
 
         tbody.addEventListener('click', function(e) {
@@ -234,56 +234,86 @@ const TableManager = {
         });
     },
 
-   showParamSettings(x, y, index) {
-       const popup = document.getElementById('paramSettingsPopup');
-       if (!popup) return;
+    showParamSettings(x, y, index) {
+        const popup = document.getElementById('paramSettingsPopup');
+        if (!popup) return;
 
-       const param = this.params[index];
-       if (!param) return;
+        const param = this.params[index];
+        if (!param) return;
 
-       const settings = this.getParamSettings(index);
-       const currentScale = settings.scale ?? param.scale ?? 1.0;
+        const settings = this.getParamSettings(index);
+        const currentScale = settings.scale ?? param.scale ?? 1.0;
 
-       // Заполняем поля
-       document.getElementById('popupParamName').value = param.name;
-       document.getElementById('popupDescription').value = param.description ?? '';
+        // 🔥 Заполняем поля
+        document.getElementById('popupParamName').value = param.name;
+        document.getElementById('popupDescription').value = param.description ?? '';
 
-       // Авто-высота textarea
-       const descTextarea = document.getElementById('popupDescription');
-       descTextarea.rows = 1;
-       if (param.description) {
-           descTextarea.rows = Math.min(Math.max(Math.ceil(param.description.length / 50), 2), 6);
-       }
+        const descTextarea = document.getElementById('popupDescription');
+        descTextarea.rows = 1;
+        if (param.description) {
+            descTextarea.rows = Math.min(Math.max(Math.ceil(param.description.length / 50), 2), 6);
+        }
 
-       const discreteFields = document.getElementById('discreteFields');
-       const analogFields = document.getElementById('analogFields');
+        const discreteFields = document.getElementById('discreteFields');
+        const analogFields = document.getElementById('analogFields');
 
-       if (param.isDiscrete) {
-           discreteFields.style.display = 'block';
-           analogFields.style.display = 'none';
-       } else {
-           discreteFields.style.display = 'none';
-           analogFields.style.display = 'block';
+        if (param.isDiscrete) {
+            discreteFields.style.display = 'block';
+            analogFields.style.display = 'none';
+        } else {
+            discreteFields.style.display = 'none';
+            analogFields.style.display = 'block';
 
-           document.getElementById('popupHeight').value = settings.height;
-           document.getElementById('popupMax').value = settings.maxVal ?? '';
-           document.getElementById('popupAutoMax').checked = settings.maxVal === null;
-           document.getElementById('popupMax').disabled = settings.maxVal === null;
-           document.getElementById('popupScale').value = currentScale;
+            document.getElementById('popupHeight').value = settings.height;
+            document.getElementById('popupMax').value = settings.maxVal ?? '';
+            document.getElementById('popupAutoMax').checked = settings.maxVal === null;
+            document.getElementById('popupMax').disabled = settings.maxVal === null;
+            document.getElementById('popupScale').value = currentScale;
 
-           //  ВАЖНО: сохраняем "предыдущую" шкалу для расчета пропорции
-           document.getElementById('popupScale').dataset.prevScale = currentScale;
-       }
+            document.getElementById('popupScale').dataset.prevScale = currentScale;
+        }
 
-       popup.style.left = `${x}px`;
-       popup.style.top = `${y}px`;
-       popup.style.display = 'block';
-       popup.dataset.paramIndex = index;
+        // 🔥 Показываем popup временно, чтобы измерить его размеры
+        popup.style.display = 'block';
+        popup.style.left = '0px';
+        popup.style.top = '0px';
 
-       setTimeout(() => {
-           if (!param.isDiscrete) document.getElementById('popupHeight').focus();
-       }, 10);
-   },
+        const popupRect = popup.getBoundingClientRect();
+        const popupWidth = popupRect.width;
+        const popupHeight = popupRect.height;
+
+        // 🔥 Получаем размеры видимой области
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+
+        // 🔥 Вычисляем позицию с учётом границ экрана
+        let finalX = x;
+        let finalY = y;
+
+        // Если popup выходит за правый край — сдвигаем влево
+        if (x + popupWidth > viewportWidth) {
+            finalX = viewportWidth - popupWidth - 10;
+        }
+
+        // Если popup выходит за нижний край — сдвигаем вверх
+        if (y + popupHeight > viewportHeight) {
+            finalY = viewportHeight - popupHeight - 10;
+        }
+
+        // Если popup выходит за левый край — прижимаем к левому краю
+        if (finalX < 10) {
+            finalX = 10;
+        }
+
+        // Если popup выходит за верхний край — прижимаем к верхнему краю
+        if (finalY < 10) {
+            finalY = 10;
+        }
+
+        popup.style.left = `${finalX}px`;
+        popup.style.top = `${finalY}px`;
+        popup.dataset.paramIndex = index;
+    },  // 🔥 ЗАПЯТАЯ ДОБАВЛЕНА ЗДЕСЬ
 
     getParamSettings(index) {
         return this.paramSettings[index] || {
@@ -293,47 +323,47 @@ const TableManager = {
         };
     },
 
-   applyParamSettings(index, height, maxVal, scale) {
-       const param = this.params[index];
-       if (!param) return;
+    applyParamSettings(index, height, maxVal, scale) {
+        const param = this.params[index];
+        if (!param) return;
 
-       const newScale = scale ? parseFloat(scale) : (param.scale ?? 1.0);
-       const newMaxVal = maxVal === '' || maxVal === null ? null : parseFloat(maxVal);
+        const newScale = scale ? parseFloat(scale) : (param.scale ?? 1.0);
+        const newMaxVal = maxVal === '' || maxVal === null ? null : parseFloat(maxVal);
 
-       // 🔥 Запоминаем предыдущую шкалу для сравнения
-       const prevSettings = this.paramSettings[index] ?? {};
-       const prevScale = prevSettings.scale ?? param.scale ?? 1.0;
-       const scaleChanged = prevScale !== newScale;
+        // 🔥 Запоминаем предыдущую шкалу для сравнения
+        const prevSettings = this.paramSettings[index] ?? {};
+        const prevScale = prevSettings.scale ?? param.scale ?? 1.0;
+        const scaleChanged = prevScale !== newScale;
 
-       this.paramSettings[index] = {
-           height: height ? parseInt(height) : this.DEFAULT_HEIGHT,
-           maxVal: newMaxVal,
-           scale: newScale
-       };
+        this.paramSettings[index] = {
+            height: height ? parseInt(height) : this.DEFAULT_HEIGHT,
+            maxVal: newMaxVal,
+            scale: newScale
+        };
 
-       if (!param.isDiscrete && height && parseInt(height) >= 10) {
-           this.setRowHeight(index, parseInt(height));
-       }
+        if (!param.isDiscrete && height && parseInt(height) >= 10) {
+            this.setRowHeight(index, parseInt(height));
+        }
 
-       if (window.scopeWorker) {
-           // 🔥 Если шкала изменилась — сначала очищаем буфер
-           if (scaleChanged) {
-               window.scopeWorker.postMessage({
-                   type: 'clearBuffer',
-                   id: index
-               });
-           }
+        if (window.scopeWorker) {
+            // 🔥 Если шкала изменилась — сначала очищаем буфер
+            if (scaleChanged) {
+                window.scopeWorker.postMessage({
+                    type: 'clearBuffer',
+                    id: index
+                });
+            }
 
-           window.scopeWorker.postMessage({
-               type: 'updateSettings',
-               id: index,
-               width: undefined,
-               height: param.isDiscrete ? this.DEFAULT_HEIGHT : this.paramSettings[index].height,
-               maxVal: this.paramSettings[index].maxVal,
-               scale: this.paramSettings[index].scale
-           });
-       }
-   },
+            window.scopeWorker.postMessage({
+                type: 'updateSettings',
+                id: index,
+                width: undefined,
+                height: param.isDiscrete ? this.DEFAULT_HEIGHT : this.paramSettings[index].height,
+                maxVal: this.paramSettings[index].maxVal,
+                scale: this.paramSettings[index].scale
+            });
+        }
+    },
 
     hideParamSettings() {
         const popup = document.getElementById('paramSettingsPopup');
