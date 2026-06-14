@@ -78,9 +78,13 @@ window.wasmSerialTransceive = async function(requestBytes) {
                const funcCode = SerialManager.buffer[1];
                let expectedLength = 0;
 
-               // 🔥 Только три рабочие команды: 0x03, 0x04, 0x11
+               // 🔥 Функции чтения: 0x03, 0x04, 0x11
                if (funcCode === 0x03 || funcCode === 0x04 || funcCode === 0x11) {
                    expectedLength = 3 + SerialManager.buffer[2] + 2;
+               }
+               // 🔥 Функция записи: 0x10 (ответ всегда 8 байт)
+               else if (funcCode === 0x10) {
+                   expectedLength = 8;
                }
 
                if (expectedLength > 0 && SerialManager.buffer.length >= expectedLength) {
@@ -146,7 +150,6 @@ window.oscilloStop = function() {
     SerialManager.oscilloChunks = [];
     regToBitsMap = {};
 
-    // 🔥 НОВОЕ: очищаем все графики в Worker'е
     if (window.scopeWorker) {
         window.scopeWorker.postMessage({ type: 'clearAllGraphs' });
     }
@@ -256,6 +259,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+
 // 🔥 Функция вычисления CRC16 для Modbus
 function calculateCRC16(data) {
     let crc = 0xFFFF;
@@ -272,7 +276,7 @@ function calculateCRC16(data) {
     return crc;
 }
 
-// 🔥 Чтение ID устройства (с перебором адресов)
+// 🔥 Чтение ID устройства
 window.readDeviceId = async function() {
     console.log('[Main] 🎯 readDeviceId ВЫЗВАНА!');
 
@@ -284,11 +288,9 @@ window.readDeviceId = async function() {
             console.log('[Main] ✅ Порт подключен');
         }
 
-        // 🔥 Пробуем адрес 0x01 (как ты сказал, он точно рабочий)
         const addr = 0x01;
         console.log(`[Main] 🔍 Пробуем адрес 0x${addr.toString(16).toUpperCase()}...`);
 
-        //  Пробуем функцию 0x11 (Report Slave ID)
         const request = new Uint8Array([addr, 0x11]);
         const crc = calculateCRC16(request);
         const fullRequest = new Uint8Array([addr, 0x11, crc & 0xFF, (crc >> 8) & 0xFF]);
@@ -308,7 +310,6 @@ window.readDeviceId = async function() {
 
             console.log(`[Main] ✅ ID устройства:`, deviceId);
 
-            // 🔥 ВМЕСТО alert используем наше окно:
             showCustomPopup(`ID устройства: ${deviceId}\nАдрес: 0x${addr.toString(16).toUpperCase()}`);
             return;
         }
@@ -324,7 +325,6 @@ window.readDeviceId = async function() {
 
 // 🔥 Функция для красивого всплывающего окна БЕЗ заголовка браузера
 function showCustomPopup(text) {
-    // 1. Инжектим современные стили, если их еще нет
     if (!document.getElementById('custom-popup-styles')) {
         const style = document.createElement('style');
         style.id = 'custom-popup-styles';
@@ -370,7 +370,6 @@ function showCustomPopup(text) {
         document.head.appendChild(style);
     }
 
-    // 2. Создаем элементы
     const overlay = document.createElement('div');
     overlay.className = 'custom-overlay';
 
@@ -386,7 +385,6 @@ function showCustomPopup(text) {
     overlay.appendChild(box);
     document.body.appendChild(overlay);
 
-    // 3. Логика закрытия
     const closePopup = () => {
         if (document.body.contains(overlay)) {
             document.body.removeChild(overlay);
@@ -397,6 +395,102 @@ function showCustomPopup(text) {
     overlay.addEventListener('click', (e) => {
         if (e.target === overlay) closePopup();
     });
+}
+
+// 🔥 Обработка полей ввода внизу осциллографа
+const userInputField = document.getElementById('userInputField');
+const outputField = document.getElementById('outputField');
+
+if (userInputField) {
+    userInputField.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            const text = userInputField.value.trim();
+            if (text) {
+                console.log('[Main] 📝 Введён текст:', text);
+                processUserInput(text);
+            }
+        }
+    });
+}
+
+// 🔥 Функция записи значения в регистр Modbus
+async function processUserInput(text) {
+    if (!outputField) return;
+
+    // Парсим строку вида "IExcRef_min=1254"
+    const match = text.match(/^([^=]+)=(.+)$/);
+    if (!match) {
+        outputField.value = '❌ Формат: Имя=Значение';
+        return;
+    }
+
+    const paramName = match[1].trim();
+    const valueStr = match[2].trim();
+
+    // Проверяем, что значение - число
+    const value = parseInt(valueStr);
+    if (isNaN(value) || value < 0 || value > 65535) {
+        outputField.value = `❌ Некорректное значение: ${valueStr}`;
+        return;
+    }
+
+    // Ищем параметр по имени
+    const param = TableManager.params.find(p => p.name === paramName);
+    if (!param) {
+        outputField.value = `❌ Параметр не найден: ${paramName}`;
+        return;
+    }
+
+    // Извлекаем адрес регистра из param.register (формат "rXXXX")
+    const regMatch = param.register.match(/r([0-9a-fA-F]+)/);
+    if (!regMatch) {
+        outputField.value = `❌ Неверный формат регистра: ${param.register}`;
+        return;
+    }
+
+    const regAddr = parseInt(regMatch[1], 16);
+
+    // Формируем Modbus запрос 0x10 (Write Multiple Registers)
+    // [адрес, 0x10, адрес_рег_high, адрес_рег_low, кол-во_рег_high, кол-во_рег_low, байт_каунт, знач_high, знач_low, CRC]
+    const requestWithoutCrc = new Uint8Array([
+        0x01,                           // Адрес устройства
+        0x10,                           // Функция Write Multiple Registers
+        (regAddr >> 8) & 0xFF,         // Адрес регистра high byte
+        regAddr & 0xFF,                // Адрес регистра low byte
+        0x00, 0x01,                    // Количество регистров: 1
+        0x02,                          // Byte count: 2 байта данных
+        (value >> 8) & 0xFF,           // Значение high byte
+        value & 0xFF                   // Значение low byte
+    ]);
+
+    const crc = calculateCRC16(requestWithoutCrc);
+    const request = new Uint8Array([
+        ...requestWithoutCrc,
+        crc & 0xFF,
+        (crc >> 8) & 0xFF
+    ]);
+
+    console.log(`[Main] 📝 Запись ${paramName}=${value} в регистр 0x${regAddr.toString(16).toUpperCase()}:`,
+        Array.from(request).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
+
+    try {
+        const response = await window.wasmSerialTransceive(request);
+
+        if (response.length > 0 && response[1] === 0x10) {
+            console.log('[Main] ✅ Запись успешна:',
+                Array.from(response).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
+            outputField.value = `✅ ${paramName}=${value} записано`;
+
+            // Обновляем отображение в таблице
+            TableManager.updateRow(param.graphIdx, value, value * (param.scale || 1.0));
+        } else {
+            console.error('[Main] ❌ Ошибка записи:', response);
+            outputField.value = `❌ Ошибка записи: нет ответа`;
+        }
+    } catch (err) {
+        console.error('[Main] ❌ Ошибка:', err.message);
+        outputField.value = `❌ Ошибка: ${err.message}`;
+    }
 }
 
 console.log('[Main] ✅ main.js загружен');
