@@ -235,55 +235,56 @@ const TableManager = {
         });
     },
 
-    showParamSettings(x, y, index) {
-        const popup = document.getElementById('paramSettingsPopup');
-        if (!popup) return;
+   showParamSettings(x, y, index) {
+       const popup = document.getElementById('paramSettingsPopup');
+       if (!popup) return;
 
-        const param = this.params[index];
-        if (!param) return;
+       const param = this.params[index];
+       if (!param) return;
 
-        const settings = this.getParamSettings(index);
+       const settings = this.getParamSettings(index);
+       const currentScale = settings.scale ?? param.scale ?? 1.0;
 
-        // 🔥 Заполняем поля
-        document.getElementById('popupParamName').value = param.name;
-        document.getElementById('popupDescription').value = param.description || '';
+       // Заполняем поля
+       document.getElementById('popupParamName').value = param.name;
+       document.getElementById('popupDescription').value = param.description ?? '';
 
-        // 🔥 Авто-высота textarea
-        const descTextarea = document.getElementById('popupDescription');
-        descTextarea.rows = 1;
-        if (param.description) {
-            const lines = Math.ceil(param.description.length / 50);  // Примерно 50 символов на строку
-            descTextarea.rows = Math.min(Math.max(lines, 2), 6);  // Мин 2, макс 6 строк
-        }
+       // Авто-высота textarea
+       const descTextarea = document.getElementById('popupDescription');
+       descTextarea.rows = 1;
+       if (param.description) {
+           descTextarea.rows = Math.min(Math.max(Math.ceil(param.description.length / 50), 2), 6);
+       }
 
-        const discreteFields = document.getElementById('discreteFields');
-        const analogFields = document.getElementById('analogFields');
+       const discreteFields = document.getElementById('discreteFields');
+       const analogFields = document.getElementById('analogFields');
 
-        if (param.isDiscrete) {
-            discreteFields.style.display = 'block';
-            analogFields.style.display = 'none';
-        } else {
-            discreteFields.style.display = 'none';
-            analogFields.style.display = 'block';
+       if (param.isDiscrete) {
+           discreteFields.style.display = 'block';
+           analogFields.style.display = 'none';
+       } else {
+           discreteFields.style.display = 'none';
+           analogFields.style.display = 'block';
 
-            document.getElementById('popupHeight').value = settings.height;
-            document.getElementById('popupMax').value = settings.maxVal !== null ? settings.maxVal : '';
-            document.getElementById('popupAutoMax').checked = settings.maxVal === null;
-            document.getElementById('popupMax').disabled = settings.maxVal === null;
-            document.getElementById('popupScale').value = settings.scale || param.scale || 1.0;
-        }
+           document.getElementById('popupHeight').value = settings.height;
+           document.getElementById('popupMax').value = settings.maxVal ?? '';
+           document.getElementById('popupAutoMax').checked = settings.maxVal === null;
+           document.getElementById('popupMax').disabled = settings.maxVal === null;
+           document.getElementById('popupScale').value = currentScale;
 
-        popup.style.left = x + 'px';
-        popup.style.top = y + 'px';
-        popup.style.display = 'block';
-        popup.dataset.paramIndex = index;
+           //  ВАЖНО: сохраняем "предыдущую" шкалу для расчета пропорции
+           document.getElementById('popupScale').dataset.prevScale = currentScale;
+       }
 
-        setTimeout(() => {
-            if (!param.isDiscrete) {
-                document.getElementById('popupHeight').focus();
-            }
-        }, 10);
-    },
+       popup.style.left = `${x}px`;
+       popup.style.top = `${y}px`;
+       popup.style.display = 'block';
+       popup.dataset.paramIndex = index;
+
+       setTimeout(() => {
+           if (!param.isDiscrete) document.getElementById('popupHeight').focus();
+       }, 10);
+   },
 
     getParamSettings(index) {
         return this.paramSettings[index] || {
@@ -293,36 +294,47 @@ const TableManager = {
         };
     },
 
-    applyParamSettings(index, height, maxVal, scale) {
-        const param = this.params[index];
-        if (!param) return;
+   applyParamSettings(index, height, maxVal, scale) {
+       const param = this.params[index];
+       if (!param) return;
 
-        // 🔥 Сохраняем настройки
-        this.paramSettings[index] = {
-            height: height ? parseInt(height) : this.DEFAULT_HEIGHT,
-            maxVal: (maxVal === '' || maxVal === null) ? null : parseFloat(maxVal),
-            scale: scale ? parseFloat(scale) : 1.0
-        };
+       const newScale = scale ? parseFloat(scale) : (param.scale ?? 1.0);
+       const newMaxVal = maxVal === '' || maxVal === null ? null : parseFloat(maxVal);
 
-        // 🔥 Применяем высоту строки (только для аналоговых)
-        if (!param.isDiscrete && height && parseInt(height) >= 10) {
-            this.setRowHeight(index, parseInt(height));
-        }
+       // 🔥 Запоминаем предыдущую шкалу для сравнения
+       const prevSettings = this.paramSettings[index] ?? {};
+       const prevScale = prevSettings.scale ?? param.scale ?? 1.0;
+       const scaleChanged = prevScale !== newScale;
 
-        // 🔥 Отправляем настройки в worker
-        if (window.scopeWorker) {
-            window.scopeWorker.postMessage({
-                type: 'updateSettings',
-                id: index,
-                width: undefined,
-                height: param.isDiscrete ? this.DEFAULT_HEIGHT : this.paramSettings[index].height,
-                maxVal: this.paramSettings[index].maxVal,
-                scale: this.paramSettings[index].scale
-            });
-        }
+       this.paramSettings[index] = {
+           height: height ? parseInt(height) : this.DEFAULT_HEIGHT,
+           maxVal: newMaxVal,
+           scale: newScale
+       };
 
-        console.log(`[TableManager] ✅ Настройки параметра ${index}: высота=${this.paramSettings[index].height}, макс=${this.paramSettings[index].maxVal}, шкала=${this.paramSettings[index].scale}`);
-    },
+       if (!param.isDiscrete && height && parseInt(height) >= 10) {
+           this.setRowHeight(index, parseInt(height));
+       }
+
+       if (window.scopeWorker) {
+           // 🔥 Если шкала изменилась — сначала очищаем буфер
+           if (scaleChanged) {
+               window.scopeWorker.postMessage({
+                   type: 'clearBuffer',
+                   id: index
+               });
+           }
+
+           window.scopeWorker.postMessage({
+               type: 'updateSettings',
+               id: index,
+               width: undefined,
+               height: param.isDiscrete ? this.DEFAULT_HEIGHT : this.paramSettings[index].height,
+               maxVal: this.paramSettings[index].maxVal,
+               scale: this.paramSettings[index].scale
+           });
+       }
+   },
 
     hideParamSettings() {
         const popup = document.getElementById('paramSettingsPopup');

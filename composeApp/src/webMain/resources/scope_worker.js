@@ -40,23 +40,36 @@ self.onmessage = (e) => {
             if (g.buffer.length > MAX_POINTS) g.buffer.shift();
         }
     }
-    else if (msg.type === 'updateSettings') {
+
+    else if (msg.type === 'clearBuffer') {
         const g = graphs[msg.id];
         if (g) {
-            if (msg.width !== undefined && msg.width > 0) {
-                g.canvas.width = msg.width;
-                g.w = msg.width;
-            }
-            if (msg.height !== undefined && msg.height > 0) {
-                g.canvas.height = msg.height;
-                g.h = msg.height;
-            }
-            g.ctx = g.canvas.getContext('2d');
-            if (msg.maxVal !== undefined) {
-                g.settings.maxVal = msg.maxVal;
-            }
+            g.buffer.length = 0;
         }
     }
+
+   else if (msg.type === 'updateSettings') {
+       const g = graphs[msg.id];
+       if (g) {
+           if (msg.width !== undefined && msg.width > 0) {
+               g.canvas.width = msg.width;
+               g.w = msg.width;
+           }
+           if (msg.height !== undefined && msg.height > 0) {
+               g.canvas.height = msg.height;
+               g.h = msg.height;
+           }
+           g.ctx = g.canvas.getContext('2d');
+           if (msg.maxVal !== undefined) {
+               g.settings.maxVal = msg.maxVal;
+           }
+
+           // 🔥 НОВОЕ: при изменении шкалы очищаем буфер, чтобы старые точки не мешали
+           if (msg.scale !== undefined) {
+               g.buffer.length = 0;
+           }
+       }
+   }
 };
 
 let lastFrameTime = 0;

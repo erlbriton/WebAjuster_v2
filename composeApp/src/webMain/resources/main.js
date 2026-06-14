@@ -31,31 +31,38 @@ window.initOscilloscope = function() {
 };
 
 async function startSerial() {
-    SerialManager.onData = (values, startAddress, timestamp) => {
-        values.forEach((regValue, offset) => {
-            const regAddr = startAddress + offset;
-            const bitsInfo = regToBitsMap[regAddr];
+   SerialManager.onData = (values, startAddress, timestamp) => {
+       values.forEach((regValue, offset) => {
+           const regAddr = startAddress + offset;
+           const bitsInfo = regToBitsMap[regAddr];
 
-            if (bitsInfo) {
-                bitsInfo.forEach(({ graphIdx, bit }) => {
-                    let value;
-                    if (bit === -1) {
-                        value = regValue;
-                    } else {
-                        value = (regValue >> bit) & 1;
-                    }
+           if (bitsInfo) {
+               bitsInfo.forEach(({ graphIdx, bit }) => {
+                   // Извлекаем бит или берем значение целиком
+                   const rawValue = bit === -1 ? regValue : (regValue >> bit) & 1;
 
-                    TableManager.updateRow(graphIdx, value, value);
-                    scopeWorker.postMessage({
-                        type: 'data',
-                        id: graphIdx,
-                        v1: value,
-                        t: timestamp
-                    });
-                });
-            }
-        });
-    };
+                   // Получаем актуальную шкалу (из настроек или из параметра по умолчанию)
+                   const settings = TableManager.paramSettings[graphIdx] ?? {};
+                   const param = TableManager.params[graphIdx] ?? {};
+                   const scale = settings.scale ?? param.scale ?? 1.0;
+
+                   // Масштабируем значение
+                   const physicalValue = rawValue * scale;
+
+                   // HEX = сырое значение, Physical = масштабированное
+                   TableManager.updateRow(graphIdx, rawValue, physicalValue);
+
+                   // В график отправляем уже физическое значение
+                   scopeWorker.postMessage({
+                       type: 'data',
+                       id: graphIdx,
+                       v1: physicalValue,
+                       t: timestamp
+                   });
+               });
+           }
+       });
+   };
     await SerialManager.start();
 }
 
@@ -172,28 +179,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const heightInput = document.getElementById('popupHeight');
     const maxInput = document.getElementById('popupMax');
     const autoMaxCheckbox = document.getElementById('popupAutoMax');
-    const scaleInput = document.getElementById('popupScale');  // 🔥 НОВОЕ
+    const scaleInput = document.getElementById('popupScale');
 
-    // 🔥 Кнопка "Применить"
+    // Кнопка "Применить"
     applyBtn.addEventListener('click', () => {
         const index = parseInt(popup.dataset.paramIndex);
         const height = heightInput.value;
         const maxVal = autoMaxCheckbox.checked ? '' : maxInput.value;
-        const scale = scaleInput.value;  // 🔥 НОВОЕ
+        const scale = scaleInput.value;
 
         if (TableManager.applyParamSettings) {
-            TableManager.applyParamSettings(index, height, maxVal, scale);  // 🔥 Передаём scale
+            TableManager.applyParamSettings(index, height, maxVal, scale);
         }
         TableManager.hideParamSettings();
     });
 
-    // 🔥 Кнопка "Отмена"
+    // Кнопка "Отмена"
     cancelBtn.addEventListener('click', () => {
         TableManager.hideParamSettings();
     });
 
-    // 🔥 Enter в полях = Применить
-    [heightInput, maxInput, scaleInput].forEach(input => {  // 🔥 Добавили scaleInput
+    // Enter в полях = Применить
+    [heightInput, maxInput, scaleInput].forEach(input => {
         if (input) {
             input.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
@@ -203,7 +210,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 🔥 Авто-максимум: отключает поле ввода
+    // Авто-максимум: отключает поле ввода
     autoMaxCheckbox.addEventListener('change', () => {
         maxInput.disabled = autoMaxCheckbox.checked;
         if (autoMaxCheckbox.checked) {
@@ -211,14 +218,32 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 🔥 Клик вне popup = Отмена
+    // 🔥 НОВОЕ: Автопересчет максимума при изменении шкалы
+    if (scaleInput && maxInput) {
+        scaleInput.addEventListener('input', (e) => {
+            const newScale = parseFloat(e.target.value) || 1.0;
+            const prevScale = parseFloat(e.target.dataset.prevScale) || 1.0;
+            const currentMax = parseFloat(maxInput.value);
+
+            // Если максимум задан вручную и шкала изменилась — пересчитываем
+            if (!isNaN(currentMax) && prevScale !== 0 && prevScale !== newScale) {
+                const newMax = currentMax * (newScale / prevScale);
+                maxInput.value = Number.isInteger(newMax) ? newMax : parseFloat(newMax.toFixed(6));
+            }
+
+            // Обновляем "предыдущую" шкалу
+            e.target.dataset.prevScale = newScale;
+        });
+    }
+
+    // Клик вне popup = Отмена
     document.addEventListener('click', (e) => {
         if (popup.style.display === 'block' && !popup.contains(e.target)) {
             TableManager.hideParamSettings();
         }
     });
 
-    // 🔥 Escape = Отмена
+    // Escape = Отмена
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && popup.style.display === 'block') {
             TableManager.hideParamSettings();

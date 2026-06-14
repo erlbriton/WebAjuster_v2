@@ -257,9 +257,10 @@ private fun parseIniContent(content: String, fileName: String): DeviceInfoIni? {
                             idName = parts.getOrNull(0) ?: "",
                             description = parts.getOrNull(1) ?: "",
                             dataType = dataType,
-                            modbusReg = calculatedModbusReg, // Сюда улетит "r2020.1" для битовых
-                            unit = calculatedUnit,           // Сюда улетит "*" для битовых
+                            modbusReg = calculatedModbusReg,
+                            unit = calculatedUnit,
                             scaleName = scaleName,
+                            vars = scaleValue,  // 🔥
                             initialHexBase = hexRaw,
                             initialPhysBase = physicalValue,
                             initialHexCtrl = "x0000",
