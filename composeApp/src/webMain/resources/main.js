@@ -31,38 +31,33 @@ window.initOscilloscope = function() {
 };
 
 async function startSerial() {
-   SerialManager.onData = (values, startAddress, timestamp) => {
-       values.forEach((regValue, offset) => {
-           const regAddr = startAddress + offset;
-           const bitsInfo = regToBitsMap[regAddr];
+    SerialManager.onData = (values, startAddress, timestamp) => {
+        values.forEach((regValue, offset) => {
+            const regAddr = startAddress + offset;
+            const bitsInfo = regToBitsMap[regAddr];
 
-           if (bitsInfo) {
-               bitsInfo.forEach(({ graphIdx, bit }) => {
-                   // Извлекаем бит или берем значение целиком
-                   const rawValue = bit === -1 ? regValue : (regValue >> bit) & 1;
+            if (bitsInfo) {
+                bitsInfo.forEach(({ graphIdx, bit }) => {
+                    const rawValue = bit === -1 ? regValue : (regValue >> bit) & 1;
 
-                   // Получаем актуальную шкалу (из настроек или из параметра по умолчанию)
-                   const settings = TableManager.paramSettings[graphIdx] ?? {};
-                   const param = TableManager.params[graphIdx] ?? {};
-                   const scale = settings.scale ?? param.scale ?? 1.0;
+                    const settings = TableManager.paramSettings[graphIdx] ?? {};
+                    const param = TableManager.params[graphIdx] ?? {};
+                    const scale = settings.scale ?? param.scale ?? 1.0;
 
-                   // Масштабируем значение
-                   const physicalValue = rawValue * scale;
+                    const physicalValue = rawValue * scale;
 
-                   // HEX = сырое значение, Physical = масштабированное
-                   TableManager.updateRow(graphIdx, rawValue, physicalValue);
+                    TableManager.updateRow(graphIdx, rawValue, physicalValue);
 
-                   // В график отправляем уже физическое значение
-                   scopeWorker.postMessage({
-                       type: 'data',
-                       id: graphIdx,
-                       v1: physicalValue,
-                       t: timestamp
-                   });
-               });
-           }
-       });
-   };
+                    scopeWorker.postMessage({
+                        type: 'data',
+                        id: graphIdx,
+                        v1: physicalValue,
+                        t: timestamp
+                    });
+                });
+            }
+        });
+    };
     await SerialManager.start();
 }
 
@@ -115,7 +110,6 @@ window.oscilloStart = function(registersStr, baudRate) {
 
         window.initOscilloscope();
 
-        // Создаем карту регистров и битов
         regToBitsMap = {};
         const uniqueAddresses = new Set();
 
@@ -146,7 +140,27 @@ window.oscilloStart = function(registersStr, baudRate) {
 
 window.oscilloStop = function() {
     SerialManager.oscilloAddresses = [];
+    SerialManager.oscilloChunks = [];
     regToBitsMap = {};
+
+    // 🔥 НОВОЕ: очищаем все графики в Worker'е
+    if (window.scopeWorker) {
+        window.scopeWorker.postMessage({ type: 'clearAllGraphs' });
+    }
+
+    const tbody = document.getElementById('paramTableBody');
+    if (tbody) {
+        tbody.innerHTML = '';
+    }
+
+    if (window.TableManager) {
+        TableManager.params = [];
+        TableManager.paramSettings = {};
+    }
+
+    window.ramParameters = [];
+
+    console.log('[Main] 🧹 Осциллограф очищен');
 };
 
 window.buildLeftPanel = function(jsonStr) {
@@ -154,8 +168,7 @@ window.buildLeftPanel = function(jsonStr) {
     try {
         window.ramParameters = JSON.parse(jsonStr);
 
-        // 🔥 ВРЕМЕННЫЙ ЛОГ: покажи первые 3 параметра полностью
-        console.log('[Main]  Первые 3 параметра:');
+        console.log('[Main] 📋 Первые 3 параметра:');
         for (let i = 0; i < Math.min(3, window.ramParameters.length); i++) {
             console.log(`  [${i}]:`, JSON.stringify(window.ramParameters[i]));
         }
@@ -169,7 +182,6 @@ window.buildLeftPanel = function(jsonStr) {
 
 window.updateLeftPanelValues = function(jsonStr) {};
 
-// 🔥 Обработчики popup настроек
 document.addEventListener('DOMContentLoaded', () => {
     const popup = document.getElementById('paramSettingsPopup');
     if (!popup) return;
@@ -181,7 +193,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const autoMaxCheckbox = document.getElementById('popupAutoMax');
     const scaleInput = document.getElementById('popupScale');
 
-    // Кнопка "Применить"
     applyBtn.addEventListener('click', () => {
         const index = parseInt(popup.dataset.paramIndex);
         const height = heightInput.value;
@@ -194,12 +205,10 @@ document.addEventListener('DOMContentLoaded', () => {
         TableManager.hideParamSettings();
     });
 
-    // Кнопка "Отмена"
     cancelBtn.addEventListener('click', () => {
         TableManager.hideParamSettings();
     });
 
-    // Enter в полях = Применить
     [heightInput, maxInput, scaleInput].forEach(input => {
         if (input) {
             input.addEventListener('keypress', (e) => {
@@ -210,7 +219,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Авто-максимум: отключает поле ввода
     autoMaxCheckbox.addEventListener('change', () => {
         maxInput.disabled = autoMaxCheckbox.checked;
         if (autoMaxCheckbox.checked) {
@@ -218,32 +226,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 🔥 НОВОЕ: Автопересчет максимума при изменении шкалы
     if (scaleInput && maxInput) {
         scaleInput.addEventListener('input', (e) => {
             const newScale = parseFloat(e.target.value) || 1.0;
             const prevScale = parseFloat(e.target.dataset.prevScale) || 1.0;
             const currentMax = parseFloat(maxInput.value);
 
-            // Если максимум задан вручную и шкала изменилась — пересчитываем
             if (!isNaN(currentMax) && prevScale !== 0 && prevScale !== newScale) {
                 const newMax = currentMax * (newScale / prevScale);
                 maxInput.value = Number.isInteger(newMax) ? newMax : parseFloat(newMax.toFixed(6));
             }
 
-            // Обновляем "предыдущую" шкалу
             e.target.dataset.prevScale = newScale;
         });
     }
 
-    // Клик вне popup = Отмена
     document.addEventListener('click', (e) => {
         if (popup.style.display === 'block' && !popup.contains(e.target)) {
             TableManager.hideParamSettings();
         }
     });
 
-    // Escape = Отмена
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && popup.style.display === 'block') {
             TableManager.hideParamSettings();

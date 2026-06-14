@@ -65,24 +65,23 @@ const TableManager = {
             canvas.height = this.DEFAULT_HEIGHT;
             graphCell.appendChild(canvas);
 
-            row.appendChild(graphCell);
-            tbody.appendChild(row);
+                                 row.appendChild(graphCell);
+                                 tbody.appendChild(row);
 
-            setTimeout(() => {
-                try {
-                    const offscreen = canvas.transferControlToOffscreen();
-                    scopeWorker.postMessage({
-                        type: 'initGraph',
-                        id: param.graphIdx,
-                        canvas: offscreen,
-                        width: 400,
-                        height: this.DEFAULT_HEIGHT,
-                        isDiscrete: param.isDiscrete
-                    }, [offscreen]);
-                } catch (e) {
-                    console.error(`[TableManager] ❌ Ошибка инициализации графика #${param.graphIdx}:`, e);
-                }
-            }, 100 + idx * 50);
+                                 // 🔥 Инициализация графика мгновенно (без искусственной задержки)
+                                 try {
+                                     const offscreen = canvas.transferControlToOffscreen();
+                                     scopeWorker.postMessage({
+                                         type: 'initGraph',
+                                         id: param.graphIdx,
+                                         canvas: offscreen,
+                                         width: 400,
+                                         height: this.DEFAULT_HEIGHT,
+                                         isDiscrete: param.isDiscrete
+                                     }, [offscreen]);
+                                 } catch (e) {
+                                     console.error(`[TableManager] ❌ Ошибка инициализации графика #${param.graphIdx}:`, e);
+                                 }
         });
 
         tbody.addEventListener('click', function(e) {
