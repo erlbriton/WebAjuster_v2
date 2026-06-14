@@ -43,6 +43,7 @@ import org.example.project.utils.UniversalMenuItem
 import org.example.project.utils.UniversalSelector
 import org.example.project.utils.iconsMenu
 import org.example.project.viewmodels.LocalMainViewModel
+import org.example.project.viewmodels.jsReadDeviceId
 
 // Top-level функция-обёртка для вызова JS
 fun jsConnectToDevice() {
@@ -417,8 +418,8 @@ fun HeaderTable(
                 tooltipText = "Получить ID устройства, найти его в базе и загрузить уставки",
                 backgroundColor = Color(0xFFC2B7B7),
                 onClick = {
-                    actions.onFileOration()
-                    startModbusConnection()
+//                    actions.onFileOration()
+//                    startModbusConnection()
                 }
             )
             Spacer(modifier = Modifier.width(5.dp))
@@ -430,7 +431,7 @@ fun HeaderTable(
                 onClick = {
                  //   scope.launch {
                        // readDeviceIdentification()
-                    jsConnectToDevice()
+                    jsReadDeviceId()
                   //  }
                 }
             )

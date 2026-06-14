@@ -74,18 +74,21 @@ window.wasmSerialTransceive = async function(requestBytes) {
         const timeout = 2000;
         const startTime = performance.now();
         while (performance.now() - startTime < timeout) {
-            if (SerialManager.buffer.length >= 5) {
-                const funcCode = SerialManager.buffer[1];
-                let expectedLength = 0;
-                if (funcCode === 0x03 || funcCode === 0x04) expectedLength = 3 + SerialManager.buffer[2] + 2;
-                else if (funcCode === 0x06 || funcCode === 0x10) expectedLength = 8;
-                else if (funcCode & 0x80) expectedLength = 5;
-                if (expectedLength > 0 && SerialManager.buffer.length >= expectedLength) {
-                    const response = new Uint8Array(SerialManager.buffer.slice(0, expectedLength));
-                    SerialManager.buffer.splice(0, expectedLength);
-                    return response;
-                }
-            }
+           if (SerialManager.buffer.length >= 5) {
+               const funcCode = SerialManager.buffer[1];
+               let expectedLength = 0;
+
+               // 🔥 Только три рабочие команды: 0x03, 0x04, 0x11
+               if (funcCode === 0x03 || funcCode === 0x04 || funcCode === 0x11) {
+                   expectedLength = 3 + SerialManager.buffer[2] + 2;
+               }
+
+               if (expectedLength > 0 && SerialManager.buffer.length >= expectedLength) {
+                   const response = new Uint8Array(SerialManager.buffer.slice(0, expectedLength));
+                   SerialManager.buffer.splice(0, expectedLength);
+                   return response;
+               }
+           }
             await new Promise(r => setTimeout(r, 10));
         }
         return new Uint8Array(0);
@@ -253,5 +256,147 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+// 🔥 Функция вычисления CRC16 для Modbus
+function calculateCRC16(data) {
+    let crc = 0xFFFF;
+    for (let i = 0; i < data.length; i++) {
+        crc ^= data[i];
+        for (let j = 0; j < 8; j++) {
+            if (crc & 0x0001) {
+                crc = (crc >> 1) ^ 0xA001;
+            } else {
+                crc >>= 1;
+            }
+        }
+    }
+    return crc;
+}
+
+// 🔥 Чтение ID устройства (с перебором адресов)
+window.readDeviceId = async function() {
+    console.log('[Main] 🎯 readDeviceId ВЫЗВАНА!');
+
+    try {
+        if (!SerialManager.isConnected) {
+            console.log('[Main] 🔌 Порт не открыт, подключаем...');
+            await SerialManager.connect();
+            await startSerial();
+            console.log('[Main] ✅ Порт подключен');
+        }
+
+        // 🔥 Пробуем адрес 0x01 (как ты сказал, он точно рабочий)
+        const addr = 0x01;
+        console.log(`[Main] 🔍 Пробуем адрес 0x${addr.toString(16).toUpperCase()}...`);
+
+        //  Пробуем функцию 0x11 (Report Slave ID)
+        const request = new Uint8Array([addr, 0x11]);
+        const crc = calculateCRC16(request);
+        const fullRequest = new Uint8Array([addr, 0x11, crc & 0xFF, (crc >> 8) & 0xFF]);
+
+        console.log(`[Main] 📤 Запрос 0x11:`,
+            Array.from(fullRequest).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
+
+        const response = await window.wasmSerialTransceive(fullRequest);
+
+        if (response.length > 0 && response[1] === 0x11) {
+            console.log('[Main] 📥 Ответ на 0x11:',
+                Array.from(response).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
+
+            const byteCount = response[2];
+            const idData = response.slice(3, 3 + byteCount);
+            const deviceId = new TextDecoder('ascii').decode(idData);
+
+            console.log(`[Main] ✅ ID устройства:`, deviceId);
+
+            // 🔥 ВМЕСТО alert используем наше окно:
+            showCustomPopup(`ID устройства: ${deviceId}\nАдрес: 0x${addr.toString(16).toUpperCase()}`);
+            return;
+        }
+
+        console.error('[Main] ❌ Устройство не ответило на адресе 0x01');
+        showCustomPopup('Ошибка: устройство не отвечает на адресе 0x01');
+
+    } catch (err) {
+        console.error('[Main] ❌ Ошибка:', err.message);
+        showCustomPopup(`Ошибка: ${err.message}`);
+    }
+};
+
+// 🔥 Функция для красивого всплывающего окна БЕЗ заголовка браузера
+function showCustomPopup(text) {
+    // 1. Инжектим современные стили, если их еще нет
+    if (!document.getElementById('custom-popup-styles')) {
+        const style = document.createElement('style');
+        style.id = 'custom-popup-styles';
+        style.textContent = `
+            .custom-overlay {
+                position: fixed; inset: 0;
+                background: rgba(0, 0, 0, 0.4);
+                backdrop-filter: blur(5px);
+                -webkit-backdrop-filter: blur(5px);
+                z-index: 20000;
+                display: flex; align-items: center; justify-content: center;
+                animation: fadeIn 0.2s ease-out;
+            }
+            .custom-box {
+                background: #ffffff;
+                padding: 28px 32px;
+                border-radius: 16px;
+                min-width: 320px; max-width: 480px;
+                box-shadow: 0 20px 40px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05);
+                font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                text-align: center;
+                animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+            .custom-icon { font-size: 42px; margin-bottom: 12px; display: block; line-height: 1; }
+            .custom-text {
+                font-size: 15px; color: #374151; margin-bottom: 24px;
+                white-space: pre-line; line-height: 1.6; font-weight: 500;
+            }
+            .custom-btn {
+                padding: 10px 28px;
+                background: #2563eb; color: white;
+                border: none; border-radius: 8px;
+                cursor: pointer; font-family: inherit; font-size: 14px; font-weight: 600;
+                transition: all 0.2s ease;
+                box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+            }
+            .custom-btn:hover { background: #1d4ed8; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35); }
+            .custom-btn:active { transform: translateY(0); }
+
+            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes slideUp { from { opacity: 0; transform: translateY(20px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        `;
+        document.head.appendChild(style);
+    }
+
+    // 2. Создаем элементы
+    const overlay = document.createElement('div');
+    overlay.className = 'custom-overlay';
+
+    const box = document.createElement('div');
+    box.className = 'custom-box';
+
+    box.innerHTML = `
+        <span class="custom-icon">📡</span>
+        <div class="custom-text">${text}</div>
+        <button class="custom-btn" id="custom-popup-close">Закрыть</button>
+    `;
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    // 3. Логика закрытия
+    const closePopup = () => {
+        if (document.body.contains(overlay)) {
+            document.body.removeChild(overlay);
+        }
+    };
+
+    document.getElementById('custom-popup-close').addEventListener('click', closePopup);
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closePopup();
+    });
+}
 
 console.log('[Main] ✅ main.js загружен');

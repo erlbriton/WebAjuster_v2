@@ -31,6 +31,19 @@ external fun callJsBuildLeftPanel(jsonStr: String)
 @JsFun("(jsonStr) => { if (window.updateLeftPanelValues) window.updateLeftPanelValues(jsonStr); }")
 external fun callJsUpdateLeftPanelValues(jsonStr: String)
 
+@JsFun("""
+    () => {
+        console.log('[Kotlin] 📞 Вызов jsReadDeviceId');
+        if (window.readDeviceId) {
+            console.log('[Kotlin] ✅ Функция найдена, вызываем...');
+            window.readDeviceId();
+        } else {
+            console.error('[Kotlin] ❌ Функция window.readDeviceId НЕ НАЙДЕНА!');
+        }
+    }
+""")
+external fun jsReadDeviceId()
+
 class MainViewModel {
     var currentVarsMap = mapOf<String, Double>()
     var typeMechanism        by mutableStateOf("Не указан")
