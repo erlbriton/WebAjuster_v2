@@ -35,38 +35,43 @@ const TableManager = {
             if (idx === 0) row.classList.add('selected');
             row.style.height = this.DEFAULT_HEIGHT + 'px';
 
-            const nameCell = document.createElement('td');
-            nameCell.textContent = param.name;
-            row.appendChild(nameCell);
+                                    const nameCell = document.createElement('td');
+                                    nameCell.textContent = param.name;
+                                    row.appendChild(nameCell);
 
-            const hexCell = document.createElement('td');
-            hexCell.id = param.hexId;
-            hexCell.className = 'hex-value';
-            hexCell.textContent = 'x0000';
-            row.appendChild(hexCell);
+                                    const hexCell = document.createElement('td');
+                                    hexCell.id = param.hexId;
+                                    if (param.isDiscrete) {
+                                        hexCell.className = 'discrete-cell';
+                                        hexCell.innerHTML = `<div class="discrete-indicator discrete-off" id="indicator-${idx}">0</div>`;
+                                    } else {
+                                        hexCell.className = 'hex-value';
+                                        hexCell.textContent = 'x0000';
+                                    }
+                                    row.appendChild(hexCell);
 
-            const physCell = document.createElement('td');
-            physCell.id = param.physId;
-            physCell.className = 'phys-value';
-            physCell.textContent = '0.00';
-            row.appendChild(physCell);
+                                    const physCell = document.createElement('td');
+                                    physCell.id = param.physId;
+                                    physCell.className = 'phys-value';
+                                    physCell.textContent = param.isDiscrete ? '' : '0.00';
+                                    row.appendChild(physCell);
 
-            const unitCell = document.createElement('td');
-            unitCell.textContent = param.unit;
-            row.appendChild(unitCell);
+                                    const unitCell = document.createElement('td');
+                                    unitCell.textContent = param.unit;
+                                    row.appendChild(unitCell);
 
-            const graphCell = document.createElement('td');
-            graphCell.className = 'graph-cell';
-            graphCell.style.height = this.DEFAULT_HEIGHT + 'px';
+                                    const graphCell = document.createElement('td');
+                                    graphCell.className = 'graph-cell';
+                                    graphCell.style.height = this.DEFAULT_HEIGHT + 'px';
 
-            const canvas = document.createElement('canvas');
-            canvas.id = param.graphId;
-            canvas.width = 400;
-            canvas.height = this.DEFAULT_HEIGHT;
-            graphCell.appendChild(canvas);
+                                    const canvas = document.createElement('canvas');
+                                    canvas.id = param.graphId;
+                                    canvas.width = 400;
+                                    canvas.height = this.DEFAULT_HEIGHT;
+                                    graphCell.appendChild(canvas);
 
-            row.appendChild(graphCell);
-            tbody.appendChild(row);
+                                    row.appendChild(graphCell);
+                                    tbody.appendChild(row);
 
             // 🔥 Инициализация графика мгновенно (без искусственной задержки)
             try {
@@ -105,12 +110,25 @@ const TableManager = {
         this.initContextMenu();
     },
 
-    updateRow(index, hexValue, physicalValue) {
-        const hexEl = document.getElementById('hex-' + index);
-        const physEl = document.getElementById('phys-' + index);
-        if (hexEl) hexEl.textContent = 'x' + hexValue.toString(16).toUpperCase().padStart(4, '0');
-        if (physEl) physEl.textContent = physicalValue.toFixed(2);
-    },
+               updateRow(index, hexValue, physicalValue) {
+                   const param = this.params[index];
+
+                   if (param && param.isDiscrete) {
+                       // Для дискретных параметров обновляем индикатор
+                       const indicator = document.getElementById(`indicator-${index}`);
+                       if (indicator) {
+                           const val = hexValue & 1;
+                           indicator.textContent = val ? '1' : '0';
+                           indicator.className = 'discrete-indicator ' + (val ? 'discrete-on' : 'discrete-off');
+                       }
+                   } else {
+                       // Для аналоговых — как было
+                       const hexEl = document.getElementById('hex-' + index);
+                       const physEl = document.getElementById('phys-' + index);
+                       if (hexEl) hexEl.textContent = 'x' + hexValue.toString(16).toUpperCase().padStart(4, '0');
+                       if (physEl) physEl.textContent = physicalValue.toFixed(2);
+                   }
+               },
 
     setRowHeight(index, height) {
         const rows = document.querySelectorAll('#paramTableBody tr');

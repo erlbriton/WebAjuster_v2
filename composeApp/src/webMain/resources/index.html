@@ -7,26 +7,18 @@
 
     <!-- 🔥 ЗАГЛУШКА: должна быть ПЕРВЫМ скриптом! -->
     <script>
-        // Заглушка для Kotlin/Wasm, пока serial_manager.js не загрузился
         window.wasmSerialTransceive = async function(requestBytes) {
             console.warn('[Serial] ⚠️ Заглушка wasmSerialTransceive вызвана');
             return new Uint8Array(0);
         };
-        console.log('[Serial]  Заглушка wasmSerialTransceive определена');
+        console.log('[Serial] Заглушка wasmSerialTransceive определена');
     </script>
 
-    <link type="text/css" rel="stylesheet" href="styles.css">
-    <script src="serial.js"></script>
-
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebAjuster_v2</title>
     <link type="text/css" rel="stylesheet" href="styles.css">
 
     <script src="serial.js"></script>
     <script src="modbus.js"></script>
     <script src="ringBuffer.js"></script>
-    <!-- <script src="pixi_oscillo.js"></script>-->
     <script src="serial_logic.js"></script>
 
     <!-- 🔥 Модули осциллографа -->
@@ -66,10 +58,10 @@
             top: 0;
             left: 0;
             width: 800px;
-            height: calc(100vh - 60px); /* 🔥 Высота минус панель ввода */
+            height: calc(100vh - 60px);
             background: white;
             border: 1px solid #ccc;
-            border-bottom: none; /* 🔥 Убираем нижнюю границу */
+            border-bottom: none;
             overflow: auto;
             z-index: 1000;
             transition: transform 0.3s ease, opacity 0.3s ease;
@@ -208,7 +200,7 @@
         #paramSettingsPopup button:hover {
             background: #d0d0d0;
         }
-        /* 🔥 Гарантируем что шапка будет поверх всего при прокрутке */
+
         .param-table thead {
             position: sticky;
             top: 0;
@@ -274,6 +266,36 @@
             color: #868e96;
             border-color: #dee2e6;
             cursor: not-allowed;
+        }
+
+        /* 🔥 Дискретный индикатор (квадратик с 0/1) */
+        .discrete-cell {
+            width: 30px;
+            text-align: center;
+            vertical-align: middle;
+            padding: 0 2px;
+        }
+        .discrete-indicator {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            line-height: 18px;
+            text-align: center;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            font-weight: bold;
+            border: 1px solid #000;
+            border-radius: 2px;
+            background: white;
+            color: #000;
+        }
+        .discrete-off {
+            background: white;
+            color: #000;
+        }
+        .discrete-on {
+            background: white;
+            color: #000;
         }
     </style>
 </head>

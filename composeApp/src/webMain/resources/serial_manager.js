@@ -7,10 +7,11 @@ const SerialManager = {
     paused: false,
     onData: null,
     oscilloAddresses: [],
-    oscilloChunks: [],            // 🔥 НОВОЕ: массив чанков {start, count}
+    oscilloChunks: [],
     oscilloCurrentIdx: 0,
     lastRequestAddr: 0,
-    lastRequestChunk: null,       // 🔥 НОВОЕ: последний запрошенный чанк
+    lastRequestChunk: null,
+    awaitingResponse: false,  // 🔥 НОВОЕ: флаг ожидания ответа (для RS-485)
 
     async connect() {
         try {
@@ -43,56 +44,58 @@ const SerialManager = {
         this._startReceiver();
     },
 
-// 🔥 НОВЫЙ МЕТОД: группировка адресов в чанки
-// 🔥 НОВЫЙ МЕТОД: группировка адресов в чанки с допусками пропусков
-_buildChunks(addresses, maxChunk = 125, maxGap = 3) {
-    const sorted = [...addresses].sort((a, b) => a - b);
-    const chunks = [];
-    let start = null, prev = null;
+    _buildChunks(addresses, maxChunk = 125, maxGap = 3) {
+        const sorted = [...addresses].sort((a, b) => a - b);
+        const chunks = [];
+        let start = null, prev = null;
 
-    const addRange = (s, e) => {
-        let cur = s;
-        while (cur <= e) {
-            const count = Math.min(e - cur + 1, maxChunk);
-            chunks.push({ start: cur, count: count });
-            cur += count;
+        const addRange = (s, e) => {
+            let cur = s;
+            while (cur <= e) {
+                const count = Math.min(e - cur + 1, maxChunk);
+                chunks.push({ start: cur, count: count });
+                cur += count;
+            }
+        };
+
+        for (const addr of sorted) {
+            if (start === null) {
+                start = addr;
+                prev = addr;
+            } else if (addr - prev <= maxGap) {
+                prev = addr;
+            } else {
+                addRange(start, prev);
+                start = addr;
+                prev = addr;
+            }
         }
-    };
-
-    for (const addr of sorted) {
-        if (start === null) {
-            start = addr;
-            prev = addr;
-        } else if (addr - prev <= maxGap) {
-            // 🔥 НОВОЕ: допускаем пропуск до maxGap регистров
-            prev = addr;
-        } else {
-            // Большой пропуск — закрываем предыдущий range
+        if (start !== null) {
             addRange(start, prev);
-            start = addr;
-            prev = addr;
         }
-    }
-    if (start !== null) {
-        addRange(start, prev);
-    }
-    return chunks;
-},
+        return chunks;
+    },
 
     _startSender() {
         (async () => {
             while (this.port && this.isConnected) {
                 if (this.paused || this.oscilloChunks.length === 0) {
-                    await new Promise(r => setTimeout(r, 10));
+                    await new Promise(r => setTimeout(r, 20));
                     continue;
                 }
+
+                // 🔥 НОВОЕ: ждём ответа на предыдущий запрос (критично для RS-485!)
+                if (this.awaitingResponse) {
+                    await new Promise(r => setTimeout(r, 1));
+                    continue;
+                }
+
                 try {
                     const chunk = this.oscilloChunks[this.oscilloCurrentIdx];
-                    this.lastRequestAddr = chunk.start;    // для совместимости
-                    this.lastRequestChunk = chunk;         // 🔥 НОВОЕ: сохраняем весь чанк
+                    this.lastRequestAddr = chunk.start;
+                    this.lastRequestChunk = chunk;
                     this.oscilloCurrentIdx = (this.oscilloCurrentIdx + 1) % this.oscilloChunks.length;
 
-                    // 🔥 ИЗМЕНЕНО: читаем chunk.count регистров вместо 1
                     const body = new Uint8Array([
                         0x01, 0x03,
                         (chunk.start >> 8) & 0xFF, chunk.start & 0xFF,
@@ -100,13 +103,18 @@ _buildChunks(addresses, maxChunk = 125, maxGap = 3) {
                     ]);
                     let crc = 0xFFFF;
                     for (let b of body) { crc ^= b; for (let i = 0; i < 8; i++) crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : crc >> 1; }
+
+                    // 🔥 НОВОЕ: устанавливаем флаг ПЕРЕД отправкой
+                    this.awaitingResponse = true;
+
                     await this.writer.write(new Uint8Array([...body, crc & 0xFF, (crc >> 8) & 0xFF]));
                 } catch (e) {
                     console.warn('[Serial] ⚠️ Ошибка отправки:', e.message);
+                    this.awaitingResponse = false;
                     this.handleDisconnect(e);
                     break;
                 }
-                await new Promise(r => setTimeout(r, 2));  // 🔥 Уменьшено с 5 до 2 мс
+                await new Promise(r => setTimeout(r, 2));
             }
         })();
     },
@@ -145,6 +153,9 @@ _buildChunks(addresses, maxChunk = 125, maxGap = 3) {
                                 if (this.onData && this.lastRequestChunk) {
                                     this.onData(values, this.lastRequestChunk.start, performance.now());
                                 }
+
+                                // 🔥 НОВОЕ: сбрасываем флаг ПОСЛЕ успешной обработки ответа
+                                this.awaitingResponse = false;
                             }
                             this.buffer.splice(0, expectedLength);
                         } else {
@@ -153,6 +164,7 @@ _buildChunks(addresses, maxChunk = 125, maxGap = 3) {
                     }
                 } catch (e) {
                     console.error('[Serial] ❌ Ошибка чтения:', e.message);
+                    this.awaitingResponse = false;
                     this.handleDisconnect(e);
                     break;
                 }
@@ -212,7 +224,6 @@ window.wasmSerialTransceive = async function(requestBytes) {
     console.log('[Serial] ⏸️ Осциллограф приостановлен');
 
     try {
-        await new Promise(r => setTimeout(r, 300));
         SerialManager.buffer.splice(0, SerialManager.buffer.length);
         console.log('[Serial] 🧹 Буфер очищен, длина:', SerialManager.buffer.length);
 
@@ -237,7 +248,7 @@ window.wasmSerialTransceive = async function(requestBytes) {
                 const funcCode = SerialManager.buffer[1];
                 let expectedLength = 0;
 
-                if (funcCode === 0x03 || funcCode === 0x04) {
+                if (funcCode === 0x03 || funcCode === 0x04 || funcCode === 0x11) {
                     const byteCount = SerialManager.buffer[2];
                     expectedLength = 3 + byteCount + 2;
                 } else if (funcCode === 0x06 || funcCode === 0x10) {
@@ -282,6 +293,7 @@ window.wasmSerialTransceive = async function(requestBytes) {
         return new Uint8Array(0);
     } finally {
         SerialManager.paused = false;
+        SerialManager.awaitingResponse = false;  // 🔥 НОВОЕ: сбрасываем флаг при выходе
         console.log('[Serial] ▶️ Осциллограф возобновлён');
     }
 };

@@ -17,7 +17,6 @@ const COLORS = [
 self.onmessage = (e) => {
     const msg = e.data;
 
-    // 🔥 НОВОЕ: полная очистка всех графиков
     if (msg.type === 'clearAllGraphs') {
         for (const id in graphs) {
             delete graphs[id];
@@ -26,21 +25,28 @@ self.onmessage = (e) => {
         return;
     }
 
-    if (msg.type === 'initGraph') {
-        const c = msg.canvas;
-        graphs[msg.id] = {
-            canvas: c,
-            ctx: c.getContext('2d'),
-            w: msg.width || c.width,
-            h: msg.height || c.height,
-            buffer: [],
-            settings: { maxVal: null },
-            color: COLORS[msg.id % COLORS.length],
-            isDiscrete: msg.isDiscrete || false,
-            lastValue: null,
-            lastUpdateTime: 0
-        };
-    }
+       if (msg.type === 'initGraph') {
+           const c = msg.canvas;
+
+           // 🔥 Для дискретных параметров: чередуем цвета (синий/коричневый)
+           let discreteColor;
+           if (msg.isDiscrete) {
+               discreteColor = (msg.id % 2 === 0) ? '#00BFFF' : '#FF8C00';
+           }
+
+           graphs[msg.id] = {
+               canvas: c,
+               ctx: c.getContext('2d'),
+               w: msg.width || c.width,
+               h: msg.height || c.height,
+               buffer: [],
+               settings: { maxVal: null },
+               color: msg.isDiscrete ? discreteColor : COLORS[msg.id % COLORS.length],
+               isDiscrete: msg.isDiscrete || false,
+               lastValue: null,
+               lastUpdateTime: 0
+           };
+       }
     else if (msg.type === 'data') {
         const g = graphs[msg.id];
         if (g) {
@@ -94,76 +100,51 @@ function renderLoop(timestamp) {
 
         g.ctx.clearRect(0, 0, g.w, g.h);
 
-        // Отрисовка дискретных параметров (ступенчатая функция)
-        if (g.isDiscrete) {
-            if (g.buffer.length === 0) continue;
+                                    // 🔥 Отрисовка дискретных параметров
+                                    if (g.isDiscrete) {
+                                        if (g.buffer.length === 0) continue;
 
-            const newestPoint = g.buffer[g.buffer.length - 1];
-            const newestTime = newestPoint.t;
+                                        const newestPoint = g.buffer[g.buffer.length - 1];
+                                        if (!newestPoint || newestPoint.t === undefined) continue;
 
-            const visible = [];
-            for (let p of g.buffer) {
-                const age = newestTime - p.t;
-                if (age >= 0 && age <= TIME_WINDOW) {
-                    visible.push({ ...p, age: age });
-                }
-            }
+                                        const newestTime = newestPoint.t;
 
-            if (visible.length === 0) continue;
-            visible.sort((a, b) => a.age - b.age);
+                                        const COLOR_ZERO = '#c4a882';
 
-            const yLow = g.h - 4;
-            const yHigh = 4;
+                                        // 🔥 Собираем видимые точки
+                                        const visible = [];
+                                        for (let p of g.buffer) {
+                                            if (!p || p.t === undefined) continue;
+                                            const age = newestTime - p.t;
+                                            if (age >= 0 && age <= TIME_WINDOW) {
+                                                visible.push({ ...p, age: age });
+                                            }
+                                        }
 
-            g.ctx.globalAlpha = 1.0;
-            g.ctx.strokeStyle = g.color;
-            g.ctx.lineWidth = 1.0;
-            g.ctx.lineJoin = 'miter';
-            g.ctx.lineCap = 'butt';
+                                        if (visible.length === 0) continue;
+                                        visible.sort((a, b) => a.age - b.age);
 
-            g.ctx.beginPath();
+                                        // 🔥 Рисуем каждую точку
+                                        for (let i = 0; i < visible.length; i++) {
+                                            const p = visible[i];
+                                            if (!p || p.v === undefined) continue;
 
-            const firstP = visible[0];
-            const firstX = g.w - (firstP.age / TIME_WINDOW) * g.w;
-            const firstY = firstP.v >= 0.5 ? yHigh : yLow;
-            g.ctx.moveTo(0, firstY);
-            g.ctx.lineTo(firstX, firstY);
+                                            const val = (p.v >= 0.5) ? 1 : 0;
+                                            const x = g.w - (p.age / TIME_WINDOW) * g.w;
 
-            for (let i = 0; i < visible.length; i++) {
-                const p = visible[i];
-                const x = g.w - (p.age / TIME_WINDOW) * g.w;
-                const y = p.v >= 0.5 ? yHigh : yLow;
+                                            if (val === 0) {
+                                                g.ctx.fillStyle = COLOR_ZERO;
+                                                g.ctx.fillRect(x, g.h - 2, 2, 2);
+                                            } else {
+                                                g.ctx.fillStyle = g.color;
+                                                g.ctx.fillRect(x, 0, 2, g.h);
+                                            }
+                                        }
 
-                if (i > 0) {
-                    const prevP = visible[i - 1];
-                    const timeGap = p.t - prevP.t;
+                                        continue;
+                                    }
 
-                    if (timeGap > MAX_GAP) {
-                        g.ctx.stroke();
-                        g.ctx.beginPath();
-                        g.ctx.moveTo(x, y);
-                    } else {
-                        if (p.v !== prevP.v) {
-                            g.ctx.lineTo(x, prevP.v >= 0.5 ? yHigh : yLow);
-                            g.ctx.lineTo(x, y);
-                        }
-                    }
-                }
-
-                if (i < visible.length - 1) {
-                    const nextP = visible[i + 1];
-                    const nextX = g.w - (nextP.age / TIME_WINDOW) * g.w;
-                    g.ctx.lineTo(nextX, y);
-                } else {
-                    g.ctx.lineTo(g.w, y);
-                }
-            }
-
-            g.ctx.stroke();
-            continue;
-        }
-
-        // Отрисовка аналоговых параметров
+        // 🔥 Отрисовка аналоговых параметров
         if (g.buffer.length === 0) continue;
 
         const newestPoint = g.buffer[g.buffer.length - 1];
