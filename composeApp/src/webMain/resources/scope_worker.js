@@ -2,6 +2,7 @@ const graphs = {};
 const TIME_WINDOW = 16000;
 const MAX_POINTS = 5000;
 const MAX_GAP = 1000;
+let renderCount = 0;  // 🔥 ДИАГНОСТИКА
 
 const COLORS = [
     '#0066FF',  // Ярко-синий
@@ -88,11 +89,28 @@ const TARGET_FPS = 60;
 const FRAME_INTERVAL = 1000 / TARGET_FPS;
 
 function renderLoop(timestamp) {
+    const frameStart = performance.now();
+
     if (timestamp - lastFrameTime < FRAME_INTERVAL) {
         requestAnimationFrame(renderLoop);
         return;
     }
     lastFrameTime = timestamp;
+
+    // 🔥 ДИАГНОСТИКА
+    let totalPoints = 0;
+    let maxBuffer = 0;
+    for (const id in graphs) {
+        const g = graphs[id];
+        if (g && g.buffer) {
+            totalPoints += g.buffer.length;
+            if (g.buffer.length > maxBuffer) maxBuffer = g.buffer.length;
+        }
+    }
+
+    if (renderCount++ % 60 === 0) {
+        console.log(`[Worker] 📊 Графики: ${Object.keys(graphs).length}, Точек: ${totalPoints}, Макс: ${maxBuffer}`);
+    }
 
     for (const id in graphs) {
         const g = graphs[id];
