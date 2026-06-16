@@ -1,22 +1,28 @@
 const graphs = {};
 const TIME_WINDOW = 16000;
-const MAX_POINTS = 5000;
+const MAX_POINTS = 2000;
 const MAX_GAP = 1000;
-let renderCount = 0;  // 🔥 ДИАГНОСТИКА
+let renderCount = 0;
+let visibleGraphIds = null;
 
 const COLORS = [
-    '#0066FF',  // Ярко-синий
-    '#FF0033',  // Ярко-красный
-    '#00CC44',  // Ярко-зелёный
-    '#FF8800',  // Ярко-оранжевый
-    '#AA00FF',  // Ярко-фиолетовый
-    '#00CCCC',  // Ярко-бирюзовый
-    '#FFCC00',  // Ярко-жёлтый
-    '#FF0088',  // Ярко-розовый
+    '#0066FF',
+    '#FF0033',
+    '#00CC44',
+    '#FF8800',
+    '#AA00FF',
+    '#00CCCC',
+    '#FFCC00',
+    '#FF0088',
 ];
 
 self.onmessage = (e) => {
     const msg = e.data;
+
+    if (msg.type === 'updateVisibleGraphs') {
+        visibleGraphIds = new Set(msg.visibleIds);
+        return;
+    }
 
     if (msg.type === 'clearAllGraphs') {
         for (const id in graphs) {
@@ -26,28 +32,29 @@ self.onmessage = (e) => {
         return;
     }
 
-       if (msg.type === 'initGraph') {
-           const c = msg.canvas;
+    if (msg.type === 'initGraph') {
+        console.log(`[Worker] 📥 Получен initGraph для графика #${msg.id}`);
+        const c = msg.canvas;
 
-           // 🔥 Для дискретных параметров: чередуем цвета (синий/коричневый)
-           let discreteColor;
-           if (msg.isDiscrete) {
-               discreteColor = (msg.id % 2 === 0) ? '#00BFFF' : '#FF8C00';
-           }
+        let discreteColor;
+        if (msg.isDiscrete) {
+            discreteColor = (msg.id % 2 === 0) ? '#00BFFF' : '#FF8C00';
+        }
 
-           graphs[msg.id] = {
-               canvas: c,
-               ctx: c.getContext('2d'),
-               w: msg.width || c.width,
-               h: msg.height || c.height,
-               buffer: [],
-               settings: { maxVal: null },
-               color: msg.isDiscrete ? discreteColor : COLORS[msg.id % COLORS.length],
-               isDiscrete: msg.isDiscrete || false,
-               lastValue: null,
-               lastUpdateTime: 0
-           };
-       }
+        graphs[msg.id] = {
+            canvas: c,
+            ctx: c.getContext('2d'),
+            w: msg.width || c.width,
+            h: msg.height || c.height,
+            buffer: [],
+            settings: { maxVal: null },
+            color: msg.isDiscrete ? discreteColor : COLORS[msg.id % COLORS.length],
+            isDiscrete: msg.isDiscrete || false,
+            lastValue: null,
+            lastUpdateTime: 0
+        };
+        console.log(`[Worker] ✅ График #${msg.id} инициализирован, всего графиков: ${Object.keys(graphs).length}`);
+    }
     else if (msg.type === 'data') {
         const g = graphs[msg.id];
         if (g) {
@@ -55,33 +62,49 @@ self.onmessage = (e) => {
             if (g.buffer.length > MAX_POINTS) g.buffer.shift();
         }
     }
+    else if (msg.type === 'dataBatch') {
+        msg.items.forEach(item => {
+            const g = graphs[item.graphIdx];
+            if (g) {
+                g.buffer.push({ t: item.timestamp, v: item.physicalValue });
+                if (g.buffer.length > MAX_POINTS) g.buffer.shift();
+            }
+        });
+    }
     else if (msg.type === 'clearBuffer') {
         const g = graphs[msg.id];
         if (g) {
             g.buffer.length = 0;
         }
     }
-    else if (msg.type === 'updateSettings') {
-        const g = graphs[msg.id];
-        if (g) {
-            if (msg.width !== undefined && msg.width > 0) {
-                g.canvas.width = msg.width;
-                g.w = msg.width;
-            }
-            if (msg.height !== undefined && msg.height > 0) {
-                g.canvas.height = msg.height;
-                g.h = msg.height;
-            }
-            g.ctx = g.canvas.getContext('2d');
-            if (msg.maxVal !== undefined) {
-                g.settings.maxVal = msg.maxVal;
-            }
+           else if (msg.type === 'updateSettings') {
+               const g = graphs[msg.id];
+               if (g) {
+                   let needsRedraw = false;
 
-            if (msg.scale !== undefined) {
-                g.buffer.length = 0;
-            }
-        }
-    }
+                   if (msg.width !== undefined && msg.width > 0 && msg.width !== g.w) {
+                       g.canvas.width = msg.width;
+                       g.w = msg.width;
+                       needsRedraw = true;
+                   }
+                   if (msg.height !== undefined && msg.height > 0 && msg.height !== g.h) {
+                       g.canvas.height = msg.height;
+                       g.h = msg.height;
+                       needsRedraw = true;
+                   }
+                   g.ctx = g.canvas.getContext('2d');
+
+                   if (msg.maxVal !== undefined) {
+                       g.settings.maxVal = msg.maxVal;
+                   }
+
+                   // 🔥 Очищаем буфер ТОЛЬКО при изменении scale (не при ресайзе!)
+                   if (msg.scale !== undefined && msg.scale !== g.settings.scale) {
+                       g.settings.scale = msg.scale;
+                       g.buffer.length = 0;  // Очищаем только при смене шкалы
+                   }
+               }
+           }
 };
 
 let lastFrameTime = 0;
@@ -97,7 +120,6 @@ function renderLoop(timestamp) {
     }
     lastFrameTime = timestamp;
 
-    // 🔥 ДИАГНОСТИКА
     let totalPoints = 0;
     let maxBuffer = 0;
     for (const id in graphs) {
@@ -109,67 +131,58 @@ function renderLoop(timestamp) {
     }
 
     if (renderCount++ % 60 === 0) {
-        console.log(`[Worker] 📊 Графики: ${Object.keys(graphs).length}, Точек: ${totalPoints}, Макс: ${maxBuffer}`);
+        const visibleCount = visibleGraphIds === null ? Object.keys(graphs).length : visibleGraphIds.size;
+        console.log(`[Worker] 📊 Графики: ${Object.keys(graphs).length}, Видимых: ${visibleCount}, Точек: ${totalPoints}, Макс: ${maxBuffer}`);
     }
 
     for (const id in graphs) {
+        if (visibleGraphIds !== null && !visibleGraphIds.has(parseInt(id))) {
+            continue;
+        }
+
         const g = graphs[id];
         if (!g.ctx) continue;
 
         g.ctx.clearRect(0, 0, g.w, g.h);
 
-                                    // 🔥 Отрисовка дискретных параметров
-                                    if (g.isDiscrete) {
-                                        if (g.buffer.length === 0) continue;
-
-                                        const newestPoint = g.buffer[g.buffer.length - 1];
-                                        if (!newestPoint || newestPoint.t === undefined) continue;
-
-                                        const newestTime = newestPoint.t;
-
-                                        const COLOR_ZERO = '#c4a882';
-
-                                        // 🔥 Собираем видимые точки
-                                        const visible = [];
-                                        for (let p of g.buffer) {
-                                            if (!p || p.t === undefined) continue;
-                                            const age = newestTime - p.t;
-                                            if (age >= 0 && age <= TIME_WINDOW) {
-                                                visible.push({ ...p, age: age });
-                                            }
-                                        }
-
-                                        if (visible.length === 0) continue;
-                                        visible.sort((a, b) => a.age - b.age);
-
-                                        // 🔥 Рисуем каждую точку
-                                        for (let i = 0; i < visible.length; i++) {
-                                            const p = visible[i];
-                                            if (!p || p.v === undefined) continue;
-
-                                            const val = (p.v >= 0.5) ? 1 : 0;
-                                            const x = g.w - (p.age / TIME_WINDOW) * g.w;
-
-                                            if (val === 0) {
-                                                g.ctx.fillStyle = COLOR_ZERO;
-                                                g.ctx.fillRect(x, g.h - 2, 2, 2);
-                                            } else {
-                                                g.ctx.fillStyle = g.color;
-                                                g.ctx.fillRect(x, 0, 2, g.h);
-                                            }
-                                        }
-
-                                        continue;
-                                    }
-
-        // 🔥 Отрисовка аналоговых параметров
         if (g.buffer.length === 0) continue;
+
+        if (g.isDiscrete) {
+            const newestPoint = g.buffer[g.buffer.length - 1];
+            if (!newestPoint || newestPoint.t === undefined) continue;
+
+            const newestTime = newestPoint.t;
+            const COLOR_ZERO = '#c4a882';
+
+            const startIndex = Math.max(0, g.buffer.length - 500);
+            for (let i = startIndex; i < g.buffer.length; i++) {
+                const p = g.buffer[i];
+                if (!p || p.t === undefined || p.v === undefined) continue;
+
+                const age = newestTime - p.t;
+                if (age < 0 || age > TIME_WINDOW) continue;
+
+                const val = (p.v >= 0.5) ? 1 : 0;
+                const x = g.w - (age / TIME_WINDOW) * g.w;
+
+                if (val === 0) {
+                    g.ctx.fillStyle = COLOR_ZERO;
+                    g.ctx.fillRect(x, g.h - 2, 2, 2);
+                } else {
+                    g.ctx.fillStyle = g.color;
+                    g.ctx.fillRect(x, 0, 2, g.h);
+                }
+            }
+            continue;
+        }
 
         const newestPoint = g.buffer[g.buffer.length - 1];
         const newestTime = newestPoint.t;
 
+        const startIndex = Math.max(0, g.buffer.length - 500);
         const visible = [];
-        for (let p of g.buffer) {
+        for (let i = startIndex; i < g.buffer.length; i++) {
+            const p = g.buffer[i];
             const age = newestTime - p.t;
             if (age >= 0 && age <= TIME_WINDOW) {
                 visible.push({ ...p, age: age });

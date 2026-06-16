@@ -3,6 +3,12 @@ window.scopeWorker = scopeWorker;
 let isDeviceConnected = false;
 let regToBitsMap = {};
 
+// 🔥 НОВОЕ: буферы для пакетной обработки
+let pendingUpdates = [];
+let pendingWorkerData = [];
+let lastDomUpdateTime = 0;
+const DOM_UPDATE_INTERVAL = 66; // 15 Гц = обновление каждые 66мс
+
 window.connectToDevice = async function() {
     try {
         await SerialManager.connect();
@@ -31,34 +37,17 @@ window.initOscilloscope = function() {
 };
 
 async function startSerial() {
-    SerialManager.onData = (values, startAddress, timestamp) => {
-        values.forEach((regValue, offset) => {
-            const regAddr = startAddress + offset;
-            const bitsInfo = regToBitsMap[regAddr];
-
-            if (bitsInfo) {
-                bitsInfo.forEach(({ graphIdx, bit }) => {
-                    const rawValue = bit === -1 ? regValue : (regValue >> bit) & 1;
-
-                    const settings = TableManager.paramSettings[graphIdx] ?? {};
-                    const param = TableManager.params[graphIdx] ?? {};
-                    const scale = settings.scale ?? param.scale ?? 1.0;
-
-                    const physicalValue = rawValue * scale;
-
-                    TableManager.updateRow(graphIdx, rawValue, physicalValue);
-
-                    scopeWorker.postMessage({
-                        type: 'data',
-                        id: graphIdx,
-                        v1: physicalValue,
-                        t: timestamp
-                    });
-                });
-            }
-        });
-    };
     await SerialManager.start();
+}
+
+// 🔥 НОВОЕ: пакетная обработка DOM
+function processDomUpdates() {
+    if (pendingUpdates.length === 0) return;
+
+    pendingUpdates.forEach(({ graphIdx, rawValue, physicalValue }) => {
+        TableManager.updateRow(graphIdx, rawValue, physicalValue);
+    });
+    pendingUpdates = [];
 }
 
 window.wasmSerialTransceive = async function(requestBytes) {
@@ -78,11 +67,9 @@ window.wasmSerialTransceive = async function(requestBytes) {
                const funcCode = SerialManager.buffer[1];
                let expectedLength = 0;
 
-               // 🔥 Функции чтения: 0x03, 0x04, 0x11
                if (funcCode === 0x03 || funcCode === 0x04 || funcCode === 0x11) {
                    expectedLength = 3 + SerialManager.buffer[2] + 2;
                }
-               // 🔥 Функция записи: 0x10 (ответ всегда 8 байт)
                else if (funcCode === 0x10) {
                    expectedLength = 8;
                }
@@ -138,6 +125,51 @@ window.oscilloStart = function(registersStr, baudRate) {
         SerialManager.oscilloAddresses = addresses;
         SerialManager.oscilloChunks = SerialManager._buildChunks(addresses);
         SerialManager.oscilloCurrentIdx = 0;
+
+        // 🔥 НОВОЕ: устанавливаем обработчик данных ПОСЛЕ инициализации TableManager
+               SerialManager.onData = (values, startAddress, timestamp) => {
+                   // 🔥 НОВОЕ: сохраняем данные для асинхронной обработки
+                   const capturedValues = [...values];
+                   const capturedStartAddress = startAddress;
+                   const capturedTimestamp = timestamp;
+
+                   // 🔥 НОВОЕ: планируем обработку на следующий микротаск (не блокирует Receiver)
+                   queueMicrotask(() => {
+                       capturedValues.forEach((regValue, offset) => {
+                           const regAddr = capturedStartAddress + offset;
+                           const bitsInfo = regToBitsMap[regAddr];
+
+                           if (bitsInfo) {
+                               bitsInfo.forEach(({ graphIdx, bit }) => {
+                                   const rawValue = bit === -1 ? regValue : (regValue >> bit) & 1;
+
+                                   const settings = TableManager.paramSettings[graphIdx] ?? {};
+                                   const param = TableManager.params[graphIdx] ?? {};
+                                   const scale = settings.scale ?? param.scale ?? 1.0;
+
+                                   const physicalValue = rawValue * scale;
+
+                                   pendingUpdates.push({ graphIdx, rawValue, physicalValue });
+                                   pendingWorkerData.push({ graphIdx, physicalValue, timestamp: capturedTimestamp });
+                               });
+                           }
+                       });
+
+                       if (pendingWorkerData.length > 0) {
+                           scopeWorker.postMessage({
+                               type: 'dataBatch',
+                               items: pendingWorkerData
+                           });
+                           pendingWorkerData = [];
+                       }
+
+                       const now = performance.now();
+                       if (now - lastDomUpdateTime >= DOM_UPDATE_INTERVAL) {
+                           lastDomUpdateTime = now;
+                           requestAnimationFrame(processDomUpdates);
+                       }
+                   });
+               };
 
         console.log('[Main] 🚀 Запущен с ' + addresses.length + ' адресами');
     };
@@ -260,7 +292,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-// 🔥 Функция вычисления CRC16 для Modbus
 function calculateCRC16(data) {
     let crc = 0xFFFF;
     for (let i = 0; i < data.length; i++) {
@@ -276,7 +307,6 @@ function calculateCRC16(data) {
     return crc;
 }
 
-// 🔥 Чтение ID устройства
 window.readDeviceId = async function() {
     console.log('[Main] 🎯 readDeviceId ВЫЗВАНА!');
 
@@ -323,7 +353,6 @@ window.readDeviceId = async function() {
     }
 };
 
-// 🔥 Функция для красивого всплывающего окна БЕЗ заголовка браузера
 function showCustomPopup(text) {
     if (!document.getElementById('custom-popup-styles')) {
         const style = document.createElement('style');
@@ -397,7 +426,6 @@ function showCustomPopup(text) {
     });
 }
 
-// 🔥 Обработка полей ввода внизу осциллографа
 const userInputField = document.getElementById('userInputField');
 const outputField = document.getElementById('outputField');
 
@@ -413,11 +441,9 @@ if (userInputField) {
     });
 }
 
-// 🔥 Функция записи значения в регистр Modbus
 async function processUserInput(text) {
     if (!outputField) return;
 
-    // Парсим строку вида "IExcRef_min=1254"
     const match = text.match(/^([^=]+)=(.+)$/);
     if (!match) {
         outputField.value = '❌ Формат: Имя=Значение';
@@ -427,21 +453,18 @@ async function processUserInput(text) {
     const paramName = match[1].trim();
     const valueStr = match[2].trim();
 
-    // Проверяем, что значение - число
     const value = parseInt(valueStr);
     if (isNaN(value) || value < 0 || value > 65535) {
         outputField.value = `❌ Некорректное значение: ${valueStr}`;
         return;
     }
 
-    // Ищем параметр по имени
     const param = TableManager.params.find(p => p.name === paramName);
     if (!param) {
         outputField.value = `❌ Параметр не найден: ${paramName}`;
         return;
     }
 
-    // Извлекаем адрес регистра из param.register (формат "rXXXX")
     const regMatch = param.register.match(/r([0-9a-fA-F]+)/);
     if (!regMatch) {
         outputField.value = `❌ Неверный формат регистра: ${param.register}`;
@@ -450,17 +473,15 @@ async function processUserInput(text) {
 
     const regAddr = parseInt(regMatch[1], 16);
 
-    // Формируем Modbus запрос 0x10 (Write Multiple Registers)
-    // [адрес, 0x10, адрес_рег_high, адрес_рег_low, кол-во_рег_high, кол-во_рег_low, байт_каунт, знач_high, знач_low, CRC]
     const requestWithoutCrc = new Uint8Array([
-        0x01,                           // Адрес устройства
-        0x10,                           // Функция Write Multiple Registers
-        (regAddr >> 8) & 0xFF,         // Адрес регистра high byte
-        regAddr & 0xFF,                // Адрес регистра low byte
-        0x00, 0x01,                    // Количество регистров: 1
-        0x02,                          // Byte count: 2 байта данных
-        (value >> 8) & 0xFF,           // Значение high byte
-        value & 0xFF                   // Значение low byte
+        0x01,
+        0x10,
+        (regAddr >> 8) & 0xFF,
+        regAddr & 0xFF,
+        0x00, 0x01,
+        0x02,
+        (value >> 8) & 0xFF,
+        value & 0xFF
     ]);
 
     const crc = calculateCRC16(requestWithoutCrc);
@@ -481,7 +502,6 @@ async function processUserInput(text) {
                 Array.from(response).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
             outputField.value = `✅ ${paramName}=${value} записано`;
 
-            // Обновляем отображение в таблице
             TableManager.updateRow(param.graphIdx, value, value * (param.scale || 1.0));
         } else {
             console.error('[Main] ❌ Ошибка записи:', response);

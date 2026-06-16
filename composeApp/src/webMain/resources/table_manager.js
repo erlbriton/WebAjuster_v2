@@ -2,6 +2,9 @@ const TableManager = {
     DEFAULT_HEIGHT: 20,
     params: [],
     paramSettings: {},
+    visibleGraphIds: new Set(),
+    visibilityObserver: null,
+    domCache: {},
 
     init(scopeWorker) {
         const tbody = document.getElementById('paramTableBody');
@@ -30,51 +33,54 @@ const TableManager = {
             scale: param.scale || 1.0
         }));
 
+        console.log(`[TableManager] 🔥 Начинаем создание ${this.params.length} графиков`);
+
         this.params.forEach((param, idx) => {
             const row = document.createElement('tr');
+            row.id = 'row-' + idx;
             if (idx === 0) row.classList.add('selected');
             row.style.height = this.DEFAULT_HEIGHT + 'px';
 
-                                    const nameCell = document.createElement('td');
-                                    nameCell.textContent = param.name;
-                                    row.appendChild(nameCell);
+            const nameCell = document.createElement('td');
+            nameCell.textContent = param.name;
+            row.appendChild(nameCell);
 
-                                    const hexCell = document.createElement('td');
-                                    hexCell.id = param.hexId;
-                                    if (param.isDiscrete) {
-                                        hexCell.className = 'discrete-cell';
-                                        hexCell.innerHTML = `<div class="discrete-indicator discrete-off" id="indicator-${idx}">0</div>`;
-                                    } else {
-                                        hexCell.className = 'hex-value';
-                                        hexCell.textContent = 'x0000';
-                                    }
-                                    row.appendChild(hexCell);
+            const hexCell = document.createElement('td');
+            hexCell.id = param.hexId;
+            if (param.isDiscrete) {
+                hexCell.className = 'discrete-cell';
+                hexCell.innerHTML = `<div class="discrete-indicator discrete-off" id="indicator-${idx}">0</div>`;
+            } else {
+                hexCell.className = 'hex-value';
+                hexCell.textContent = 'x0000';
+            }
+            row.appendChild(hexCell);
 
-                                    const physCell = document.createElement('td');
-                                    physCell.id = param.physId;
-                                    physCell.className = 'phys-value';
-                                    physCell.textContent = param.isDiscrete ? '' : '0.00';
-                                    row.appendChild(physCell);
+            const physCell = document.createElement('td');
+            physCell.id = param.physId;
+            physCell.className = 'phys-value';
+            physCell.textContent = param.isDiscrete ? '' : '0.00';
+            row.appendChild(physCell);
 
-                                    const unitCell = document.createElement('td');
-                                    unitCell.textContent = param.unit;
-                                    row.appendChild(unitCell);
+            const unitCell = document.createElement('td');
+            unitCell.textContent = param.unit;
+            row.appendChild(unitCell);
 
-                                    const graphCell = document.createElement('td');
-                                    graphCell.className = 'graph-cell';
-                                    graphCell.style.height = this.DEFAULT_HEIGHT + 'px';
+            const graphCell = document.createElement('td');
+            graphCell.className = 'graph-cell';
+            graphCell.style.height = this.DEFAULT_HEIGHT + 'px';
 
-                                    const canvas = document.createElement('canvas');
-                                    canvas.id = param.graphId;
-                                    canvas.width = 400;
-                                    canvas.height = this.DEFAULT_HEIGHT;
-                                    graphCell.appendChild(canvas);
+            const canvas = document.createElement('canvas');
+            canvas.id = param.graphId;
+            canvas.width = 400;
+            canvas.height = this.DEFAULT_HEIGHT;
+            graphCell.appendChild(canvas);
 
-                                    row.appendChild(graphCell);
-                                    tbody.appendChild(row);
+            row.appendChild(graphCell);
+            tbody.appendChild(row);
 
-            // 🔥 Инициализация графика мгновенно (без искусственной задержки)
             try {
+                console.log(`[TableManager] 📤 Отправляю initGraph для параметра #${idx} (${param.name})`);
                 const offscreen = canvas.transferControlToOffscreen();
                 scopeWorker.postMessage({
                     type: 'initGraph',
@@ -84,51 +90,103 @@ const TableManager = {
                     height: this.DEFAULT_HEIGHT,
                     isDiscrete: param.isDiscrete
                 }, [offscreen]);
+                console.log(`[TableManager] ✅ initGraph отправлен для #${idx}`);
             } catch (e) {
                 console.error(`[TableManager] ❌ Ошибка инициализации графика #${param.graphIdx}:`, e);
             }
         });
 
-               tbody.addEventListener('click', function(e) {
-                   const row = e.target.closest('tr');
-                   if (!row) return;
-                   tbody.querySelectorAll('tr').forEach(r => r.classList.remove('selected'));
-                   row.classList.add('selected');
+        console.log(`[TableManager] ✅ Все графики созданы`);
 
-                   // 🔥 НОВОЕ: вставляем имя параметра в поле ввода
-                   const paramName = row.cells[0]?.textContent;
-                   const userInputField = document.getElementById('userInputField');
-                   if (userInputField && paramName) {
-                       userInputField.value = paramName + '=';
-                       userInputField.focus();
-                       // Ставим курсор в конец
-                       userInputField.setSelectionRange(userInputField.value.length, userInputField.value.length);
-                   }
-               });
+        // 🔥 Кэшируем DOM элементы
+        this.params.forEach((param, idx) => {
+            this.domCache[idx] = {
+                hexEl: document.getElementById(param.hexId),
+                physEl: document.getElementById(param.physId),
+                indicator: document.getElementById(`indicator-${idx}`)
+            };
+        });
+
+        tbody.addEventListener('click', function(e) {
+            const row = e.target.closest('tr');
+            if (!row) return;
+            tbody.querySelectorAll('tr').forEach(r => r.classList.remove('selected'));
+            row.classList.add('selected');
+
+            const paramName = row.cells[0]?.textContent;
+            const userInputField = document.getElementById('userInputField');
+            if (userInputField && paramName) {
+                userInputField.value = paramName + '=';
+                userInputField.focus();
+                userInputField.setSelectionRange(userInputField.value.length, userInputField.value.length);
+            }
+        });
 
         this.initColumnResize();
         this.initContextMenu();
+        this.initVisibilityObserver();
     },
 
-               updateRow(index, hexValue, physicalValue) {
-                   const param = this.params[index];
+    initVisibilityObserver() {
+        const tbody = document.getElementById('paramTableBody');
+        if (!tbody) {
+            console.error('[TableManager] ❌ paramTableBody не найден');
+            return;
+        }
 
-                   if (param && param.isDiscrete) {
-                       // Для дискретных параметров обновляем индикатор
-                       const indicator = document.getElementById(`indicator-${index}`);
-                       if (indicator) {
-                           const val = hexValue & 1;
-                           indicator.textContent = val ? '1' : '0';
-                           indicator.className = 'discrete-indicator ' + (val ? 'discrete-on' : 'discrete-off');
-                       }
-                   } else {
-                       // Для аналоговых — как было
-                       const hexEl = document.getElementById('hex-' + index);
-                       const physEl = document.getElementById('phys-' + index);
-                       if (hexEl) hexEl.textContent = 'x' + hexValue.toString(16).toUpperCase().padStart(4, '0');
-                       if (physEl) physEl.textContent = physicalValue.toFixed(2);
-                   }
-               },
+        const scrollContainer = tbody.parentElement.parentElement;
+
+        this.visibilityObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                const idx = parseInt(entry.target.dataset.paramIndex);
+                if (isNaN(idx)) return;
+
+                if (entry.isIntersecting) {
+                    this.visibleGraphIds.add(idx);
+                } else {
+                    this.visibleGraphIds.delete(idx);
+                }
+            });
+
+            if (window.scopeWorker) {
+                window.scopeWorker.postMessage({
+                    type: 'updateVisibleGraphs',
+                    visibleIds: Array.from(this.visibleGraphIds)
+                });
+            }
+        }, {
+            root: scrollContainer,
+            threshold: 0.1
+        });
+
+        this.params.forEach((param, idx) => {
+            const row = document.getElementById('row-' + idx);
+            if (row) {
+                row.dataset.paramIndex = idx;
+                this.visibilityObserver.observe(row);
+            }
+        });
+
+        console.log(`[TableManager] ✅ Visibility observer инициализирован, наблюдаем за ${this.params.length} строками`);
+    },
+
+    updateRow(index, hexValue, physicalValue) {
+        const param = this.params[index];
+        const cached = this.domCache[index];
+
+        if (!cached) return;
+
+        if (param && param.isDiscrete) {
+            if (cached.indicator) {
+                const val = hexValue & 1;
+                cached.indicator.textContent = val ? '1' : '0';
+                cached.indicator.className = 'discrete-indicator ' + (val ? 'discrete-on' : 'discrete-off');
+            }
+        } else {
+            if (cached.hexEl) cached.hexEl.textContent = 'x' + hexValue.toString(16).toUpperCase().padStart(4, '0');
+            if (cached.physEl) cached.physEl.textContent = physicalValue.toFixed(2);
+        }
+    },
 
     setRowHeight(index, height) {
         const rows = document.querySelectorAll('#paramTableBody tr');
@@ -154,21 +212,44 @@ const TableManager = {
         return null;
     },
 
-    updateAllCanvasSizes(scopeWorker) {
-        const rows = document.querySelectorAll('#paramTableBody tr');
-        rows.forEach((row, idx) => {
-            const graphCell = row.querySelector('.graph-cell');
-            if (graphCell) {
-                const rect = graphCell.getBoundingClientRect();
-                scopeWorker.postMessage({
-                    type: 'updateSettings',
-                    id: idx,
-                    width: Math.round(rect.width),
-                    height: Math.round(rect.height)
-                });
-            }
-        });
-    },
+          _resizeThrottled: false,
+          _resizeTimeout: null,
+
+          updateAllCanvasSizes(scopeWorker) {
+              // 🔥 Throttling: не чаще раза в 200мс при ресайзе
+              if (this._resizeThrottled) {
+                  clearTimeout(this._resizeTimeout);
+                  this._resizeTimeout = setTimeout(() => {
+                      this._resizeThrottled = false;
+                      this._doUpdateAllCanvasSizes(scopeWorker);
+                  }, 200);
+                  return;
+              }
+
+              this._resizeThrottled = true;
+              this._doUpdateAllCanvasSizes(scopeWorker);
+
+              this._resizeTimeout = setTimeout(() => {
+                  this._resizeThrottled = false;
+              }, 200);
+          },
+
+          _doUpdateAllCanvasSizes(scopeWorker) {
+              const rows = document.querySelectorAll('#paramTableBody tr');
+              rows.forEach((row, idx) => {
+                  const graphCell = row.querySelector('.graph-cell');
+                  if (graphCell) {
+                      const rect = graphCell.getBoundingClientRect();
+                      scopeWorker.postMessage({
+                          type: 'updateSettings',
+                          id: idx,
+                          width: Math.round(rect.width),
+                          height: Math.round(rect.height)
+                          // 🔥 НЕ передаём scale — чтобы буфер не очищался!
+                      });
+                  }
+              });
+          },
 
     initColumnResize() {
         const tbody = document.getElementById('paramTableBody');
@@ -272,7 +353,6 @@ const TableManager = {
         const settings = this.getParamSettings(index);
         const currentScale = settings.scale ?? param.scale ?? 1.0;
 
-        // 🔥 Заполняем поля
         document.getElementById('popupParamName').value = param.name;
         document.getElementById('popupDescription').value = param.description ?? '';
 
@@ -301,7 +381,6 @@ const TableManager = {
             document.getElementById('popupScale').dataset.prevScale = currentScale;
         }
 
-        // 🔥 Показываем popup временно, чтобы измерить его размеры
         popup.style.display = 'block';
         popup.style.left = '0px';
         popup.style.top = '0px';
@@ -310,30 +389,24 @@ const TableManager = {
         const popupWidth = popupRect.width;
         const popupHeight = popupRect.height;
 
-        // 🔥 Получаем размеры видимой области
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
 
-        // 🔥 Вычисляем позицию с учётом границ экрана
         let finalX = x;
         let finalY = y;
 
-        // Если popup выходит за правый край — сдвигаем влево
         if (x + popupWidth > viewportWidth) {
             finalX = viewportWidth - popupWidth - 10;
         }
 
-        // Если popup выходит за нижний край — сдвигаем вверх
         if (y + popupHeight > viewportHeight) {
             finalY = viewportHeight - popupHeight - 10;
         }
 
-        // Если popup выходит за левый край — прижимаем к левому краю
         if (finalX < 10) {
             finalX = 10;
         }
 
-        // Если popup выходит за верхний край — прижимаем к верхнему краю
         if (finalY < 10) {
             finalY = 10;
         }
@@ -341,7 +414,7 @@ const TableManager = {
         popup.style.left = `${finalX}px`;
         popup.style.top = `${finalY}px`;
         popup.dataset.paramIndex = index;
-    },  // 🔥 ЗАПЯТАЯ ДОБАВЛЕНА ЗДЕСЬ
+    },
 
     getParamSettings(index) {
         return this.paramSettings[index] || {
@@ -358,7 +431,6 @@ const TableManager = {
         const newScale = scale ? parseFloat(scale) : (param.scale ?? 1.0);
         const newMaxVal = maxVal === '' || maxVal === null ? null : parseFloat(maxVal);
 
-        // 🔥 Запоминаем предыдущую шкалу для сравнения
         const prevSettings = this.paramSettings[index] ?? {};
         const prevScale = prevSettings.scale ?? param.scale ?? 1.0;
         const scaleChanged = prevScale !== newScale;
@@ -374,7 +446,6 @@ const TableManager = {
         }
 
         if (window.scopeWorker) {
-            // 🔥 Если шкала изменилась — сначала очищаем буфер
             if (scaleChanged) {
                 window.scopeWorker.postMessage({
                     type: 'clearBuffer',

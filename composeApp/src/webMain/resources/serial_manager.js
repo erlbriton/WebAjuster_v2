@@ -1,3 +1,5 @@
+//serial_manager.js
+
 const SerialManager = {
     port: null,
     writer: null,
@@ -76,124 +78,97 @@ const SerialManager = {
         return chunks;
     },
 
-      _startSender() {
-          let sendCount = 0;
-          let errorCount = 0;
-          let lastSendTime = 0;  // 🔥 Время последней отправки
-
-          (async () => {
-              while (this.port && this.isConnected) {
-                  if (this.paused || this.oscilloChunks.length === 0) {
-                      await new Promise(r => setTimeout(r, 20));
-                      continue;
-                  }
-
-                  //  ТАЙМАУТ: если ждём ответ больше 500мс — сбрасываем флаг
-                  if (this.awaitingResponse) {
-                      const now = performance.now();
-                      if (now - lastSendTime > 500) {
-                          console.warn(`[Serial] ⚠️ ТАЙМАУТ ожидания ответа (${now - lastSendTime}мс), сбрасываем флаг`);
-                          this.awaitingResponse = false;
-                          this.buffer.splice(0, this.buffer.length);  // Очищаем буфер
-                      } else {
-                          if (sendCount++ % 100 === 0) {
-                              console.log(`[Serial] ⏳ Ждём ответ... буфер: ${this.buffer.length} байт`);
-                          }
-                          await new Promise(r => setTimeout(r, 1));
+          _startSender() {
+              (async () => {
+                  while (this.port && this.isConnected) {
+                      if (this.paused || this.oscilloChunks.length === 0) {
+                          await new Promise(r => setTimeout(r, 20));
                           continue;
                       }
+
+                      try {
+                          const chunk = this.oscilloChunks[this.oscilloCurrentIdx];
+                          this.lastRequestChunk = chunk;
+                          this.oscilloCurrentIdx = (this.oscilloCurrentIdx + 1) % this.oscilloChunks.length;
+
+                          const body = new Uint8Array([
+                              0x01, 0x03,
+                              (chunk.start >> 8) & 0xFF, chunk.start & 0xFF,
+                              (chunk.count >> 8) & 0xFF, chunk.count & 0xFF
+                          ]);
+                          let crc = 0xFFFF;
+                          for (let b of body) { crc ^= b; for (let i = 0; i < 8; i++) crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : crc >> 1; }
+
+                          await this.writer.write(new Uint8Array([...body, crc & 0xFF, (crc >> 8) & 0xFF]));
+
+                          // 🔥 НОВОЕ: ждём фиксированное время перед следующим запросом
+                          // Это даёт устройству время ответить, а Receiver'у — прочитать данные
+                          await new Promise(r => setTimeout(r, 50));
+                      } catch (e) {
+                          console.error('[Serial] ❌ Ошибка отправки:', e.message);
+                          this.handleDisconnect(e);
+                          break;
+                      }
                   }
+              })();
+          },
 
-                  try {
-                      const chunk = this.oscilloChunks[this.oscilloCurrentIdx];
-                      this.lastRequestAddr = chunk.start;
-                      this.lastRequestChunk = chunk;
-                      this.oscilloCurrentIdx = (this.oscilloCurrentIdx + 1) % this.oscilloChunks.length;
+          _startReceiver() {
+              let receiveCount = 0;
 
-                      const body = new Uint8Array([
-                          0x01, 0x03,
-                          (chunk.start >> 8) & 0xFF, chunk.start & 0xFF,
-                          (chunk.count >> 8) & 0xFF, chunk.count & 0xFF
-                      ]);
-                      let crc = 0xFFFF;
-                      for (let b of body) { crc ^= b; for (let i = 0; i < 8; i++) crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : crc >> 1; }
+              (async () => {
+                  while (this.port && this.isConnected) {
+                      try {
+                          const { value, done } = await this.reader.read();
+                          if (done) break;
+                          if (!value) continue;
 
-                      this.awaitingResponse = true;
-                      lastSendTime = performance.now();  // 🔥 Запоминаем время отправки
+                          this.buffer.push(...value);
 
-                      await this.writer.write(new Uint8Array([...body, crc & 0xFF, (crc >> 8) & 0xFF]));
-                  } catch (e) {
-                      errorCount++;
-                      console.warn(`[Serial] ⚠️ Ошибка отправки #${errorCount}:`, e.message);
-                      this.awaitingResponse = false;
-                      this.handleDisconnect(e);
-                      break;
+                          if (this.paused) continue;
+
+                          while (this.buffer.length >= 5) {
+                              if (this.buffer[0] === 0x01 && this.buffer[1] === 0x03) {
+                                  const byteCount = this.buffer[2];
+                                  const expectedLength = 3 + byteCount + 2;
+
+                                  if (this.buffer.length < expectedLength) break;
+
+                                  let crc = 0xFFFF;
+                                  for (let i = 0; i < expectedLength - 2; i++) {
+                                      crc ^= this.buffer[i];
+                                      for (let j = 0; j < 8; j++) crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : crc >> 1;
+                                  }
+
+                                  const receivedCrc = this.buffer[expectedLength - 2] | (this.buffer[expectedLength - 1] << 8);
+
+                                  if (crc === receivedCrc) {
+                                      const values = [];
+                                      for (let i = 0; i < byteCount; i += 2) {
+                                          values.push((this.buffer[3 + i] << 8) | this.buffer[4 + i]);
+                                      }
+
+                                      if (this.onData && this.lastRequestChunk) {
+                                          this.onData(values, this.lastRequestChunk.start, performance.now());
+                                      }
+
+                                      if (receiveCount++ % 100 === 0) {
+                                          console.log(`[Serial] ✅ Получено пакетов: ${receiveCount}`);
+                                      }
+                                  }
+                                  this.buffer.splice(0, expectedLength);
+                              } else {
+                                  this.buffer.shift();
+                              }
+                          }
+                      } catch (e) {
+                          console.error('[Serial] ❌ Ошибка чтения:', e.message);
+                          this.handleDisconnect(e);
+                          break;
+                      }
                   }
-                  await new Promise(r => setTimeout(r, 2));
-              }
-          })();
-      },
-////////////////////////////////////////////////////////////////////////////////////////////////////
-               _startReceiver() {
-                   let receiveCount = 0;
-
-                   (async () => {
-                       while (this.port && this.isConnected) {
-                           try {
-                               const { value, done } = await this.reader.read();
-                               if (done) break;
-                               if (!value) continue;
-
-                               this.buffer.push(...value);
-
-                               if (this.paused) continue;
-
-                               while (this.buffer.length >= 5) {
-                                   if (this.buffer[0] === 0x01 && this.buffer[1] === 0x03) {
-                                       const byteCount = this.buffer[2];
-                                       const expectedLength = 3 + byteCount + 2;
-
-                                       if (this.buffer.length < expectedLength) break;
-
-                                       let crc = 0xFFFF;
-                                       for (let i = 0; i < expectedLength - 2; i++) {
-                                           crc ^= this.buffer[i];
-                                           for (let j = 0; j < 8; j++) crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : crc >> 1;
-                                       }
-
-                                       const receivedCrc = this.buffer[expectedLength - 2] | (this.buffer[expectedLength - 1] << 8);
-
-                                       if (crc === receivedCrc) {
-                                           // 🔥 КРИТИЧНО: сбрасываем флаг СРАЗУ, ДО обработки данных!
-                                           this.awaitingResponse = false;
-
-                                           const values = [];
-                                           for (let i = 0; i < byteCount; i += 2) {
-                                               values.push((this.buffer[3 + i] << 8) | this.buffer[4 + i]);
-                                           }
-
-                                           if (this.onData && this.lastRequestChunk) {
-                                               this.onData(values, this.lastRequestChunk.start, performance.now());
-                                           }
-
-                                           if (receiveCount++ % 100 === 0) {
-                                               console.log(`[Serial] ✅ Получено пакетов: ${receiveCount}`);
-                                           }
-                                       }
-                                       this.buffer.splice(0, expectedLength);
-                                   } else {
-                                       this.buffer.shift();
-                                   }
-                               }
-                           } catch (e) {
-                               console.error('[Serial] ❌ Ошибка чтения:', e.message);
-                               this.awaitingResponse = false;
-                               this.handleDisconnect(e);
-                               break;
-                           }
-                       }
-                   })();
-               },//////////////////////////////////////////////////////////////////////////////////////////////
+              })();
+          },//////////////////////////////////////////////////////////////////////////////////////////////
 
     handleDisconnect(error) {
         console.error('[Serial] 🔌 Ошибка устройства:', error.message);
