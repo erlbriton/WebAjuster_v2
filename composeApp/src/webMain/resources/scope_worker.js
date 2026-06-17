@@ -16,7 +16,7 @@ const COLORS = [
     '#FF0088',
 ];
 
-self.onmessage = (e) => {
+self.onmessage = function(e) {
     const msg = e.data;
 
     if (msg.type === 'updateVisibleGraphs') {
@@ -53,16 +53,20 @@ self.onmessage = (e) => {
             lastValue: null,
             lastUpdateTime: 0
         };
-        console.log(`[Worker] ✅ График #${msg.id} инициализирован, всего графиков: ${Object.keys(graphs).length}`);
+        console.log(`[Worker] ✅ График #${msg.id} инициализирован, всего: ${Object.keys(graphs).length}`);
+        return;
     }
-    else if (msg.type === 'data') {
+
+    if (msg.type === 'data') {
         const g = graphs[msg.id];
         if (g) {
             g.buffer.push({ t: msg.t, v: msg.v1 });
             if (g.buffer.length > MAX_POINTS) g.buffer.shift();
         }
+        return;
     }
-    else if (msg.type === 'dataBatch') {
+
+    if (msg.type === 'dataBatch') {
         msg.items.forEach(item => {
             const g = graphs[item.graphIdx];
             if (g) {
@@ -70,14 +74,18 @@ self.onmessage = (e) => {
                 if (g.buffer.length > MAX_POINTS) g.buffer.shift();
             }
         });
+        return;
     }
-    else if (msg.type === 'clearBuffer') {
+
+    if (msg.type === 'clearBuffer') {
         const g = graphs[msg.id];
         if (g) {
             g.buffer.length = 0;
         }
+        return;
     }
-    else if (msg.type === 'updateSettings') {
+
+    if (msg.type === 'updateSettings') {
         const g = graphs[msg.id];
         if (g) {
             if (msg.width !== undefined && msg.width > 0) {
@@ -92,16 +100,15 @@ self.onmessage = (e) => {
             if (msg.maxVal !== undefined) {
                 g.settings.maxVal = msg.maxVal;
             }
-
-            // 🔥 Очищаем буфер ТОЛЬКО при изменении scale
             if (msg.scale !== undefined && msg.scale !== g.settings.scale) {
                 g.settings.scale = msg.scale;
                 g.buffer.length = 0;
             }
         }
+        return;
     }
-    else if (msg.type === 'updateAllSizes') {
-        // 🔥 Пакетное обновление размеров (одно сообщение вместо 178)
+
+    if (msg.type === 'updateAllSizes') {
         msg.updates.forEach(update => {
             const g = graphs[update.id];
             if (g) {
@@ -116,6 +123,7 @@ self.onmessage = (e) => {
                 g.ctx = g.canvas.getContext('2d');
             }
         });
+        return;
     }
 };
 
@@ -124,8 +132,6 @@ const TARGET_FPS = 60;
 const FRAME_INTERVAL = 1000 / TARGET_FPS;
 
 function renderLoop(timestamp) {
-    const frameStart = performance.now();
-
     if (timestamp - lastFrameTime < FRAME_INTERVAL) {
         requestAnimationFrame(renderLoop);
         return;
@@ -256,3 +262,4 @@ function renderLoop(timestamp) {
 }
 
 requestAnimationFrame(renderLoop);
+console.log('[ScopeWorker] ✅ Модуль загружен');

@@ -8,7 +8,7 @@ const TableManager = {
     _resizeThrottled: false,
     _resizeTimeout: null,
 
-    init(scopeWorker) {
+    init: function(scopeWorker) {
         const tbody = document.getElementById('paramTableBody');
         if (!tbody) return;
         tbody.innerHTML = '';
@@ -34,8 +34,6 @@ const TableManager = {
             isDiscrete: param.register.includes('.'),
             scale: param.scale || 1.0
         }));
-
-        console.log(`[TableManager] 🔥 Начинаем создание ${this.params.length} графиков`);
 
         this.params.forEach((param, idx) => {
             const row = document.createElement('tr');
@@ -82,7 +80,6 @@ const TableManager = {
             tbody.appendChild(row);
 
             try {
-                console.log(`[TableManager] 📤 Отправляю initGraph для параметра #${idx} (${param.name})`);
                 const offscreen = canvas.transferControlToOffscreen();
                 scopeWorker.postMessage({
                     type: 'initGraph',
@@ -93,15 +90,11 @@ const TableManager = {
                     isDiscrete: param.isDiscrete,
                     scale: param.scale || 1.0
                 }, [offscreen]);
-                console.log(`[TableManager] ✅ initGraph отправлен для #${idx}`);
             } catch (e) {
                 console.error(`[TableManager] ❌ Ошибка инициализации графика #${param.graphIdx}:`, e);
             }
         });
 
-        console.log(`[TableManager] ✅ Все графики созданы`);
-
-        // 🔥 Кэшируем DOM элементы
         this.params.forEach((param, idx) => {
             this.domCache[idx] = {
                 hexEl: document.getElementById(param.hexId),
@@ -128,14 +121,13 @@ const TableManager = {
         this.initColumnResize();
         this.initContextMenu();
         this.initVisibilityObserver();
+
+        console.log('[TableManager] ✅ Инициализация завершена');
     },
 
-    initVisibilityObserver() {
+    initVisibilityObserver: function() {
         const tbody = document.getElementById('paramTableBody');
-        if (!tbody) {
-            console.error('[TableManager] ❌ paramTableBody не найден');
-            return;
-        }
+        if (!tbody) return;
 
         const scrollContainer = tbody.parentElement.parentElement;
 
@@ -170,10 +162,10 @@ const TableManager = {
             }
         });
 
-        console.log(`[TableManager] ✅ Visibility observer инициализирован, наблюдаем за ${this.params.length} строками`);
+        console.log(`[TableManager] ✅ Visibility observer инициализирован`);
     },
 
-    updateRow(index, hexValue, physicalValue) {
+    updateRow: function(index, hexValue, physicalValue) {
         const param = this.params[index];
         const cached = this.domCache[index];
 
@@ -191,7 +183,7 @@ const TableManager = {
         }
     },
 
-    setRowHeight(index, height) {
+    setRowHeight: function(index, height) {
         const rows = document.querySelectorAll('#paramTableBody tr');
         if (rows[index]) {
             const row = rows[index];
@@ -203,38 +195,28 @@ const TableManager = {
         }
     },
 
-    getGraphCellSize(index) {
-        const rows = document.querySelectorAll('#paramTableBody tr');
-        if (rows[index]) {
-            const graphCell = rows[index].querySelector('.graph-cell');
-            if (graphCell) {
-                const rect = graphCell.getBoundingClientRect();
-                return { width: Math.round(rect.width), height: Math.round(rect.height) };
-            }
-        }
-        return null;
-    },
+        updateAllCanvasSizes: function(scopeWorker) {
+            console.log('[TableManager] 🔥 updateAllCanvasSizes ВЫЗВАН!');  // 🔥 ДОБАВЬ ЭТУ СТРОКУ
+            console.trace();  // 🔥 Покажет стек вызовов — откуда вызвали
 
-    updateAllCanvasSizes(scopeWorker) {
-        // 🔥 Throttling: не чаще раза в 200мс при ресайзе
-        if (this._resizeThrottled) {
-            clearTimeout(this._resizeTimeout);
+            if (this._resizeThrottled) {
+                clearTimeout(this._resizeTimeout);
+                this._resizeTimeout = setTimeout(() => {
+                    this._resizeThrottled = false;
+                    this._doUpdateAllCanvasSizes(scopeWorker);
+                }, 200);
+                return;
+            }
+
+            this._resizeThrottled = true;
+            this._doUpdateAllCanvasSizes(scopeWorker);
+
             this._resizeTimeout = setTimeout(() => {
                 this._resizeThrottled = false;
-                this._doUpdateAllCanvasSizes(scopeWorker);
             }, 200);
-            return;
-        }
+        },
 
-        this._resizeThrottled = true;
-        this._doUpdateAllCanvasSizes(scopeWorker);
-
-        this._resizeTimeout = setTimeout(() => {
-            this._resizeThrottled = false;
-        }, 200);
-    },
-
-    _doUpdateAllCanvasSizes(scopeWorker) {
+    _doUpdateAllCanvasSizes: function(scopeWorker) {
         const rows = document.querySelectorAll('#paramTableBody tr');
         const updates = [];
 
@@ -250,14 +232,13 @@ const TableManager = {
             }
         });
 
-        // 🔥 Отправляем ОДНО сообщение со всеми размерами
         scopeWorker.postMessage({
             type: 'updateAllSizes',
             updates: updates
         });
     },
 
-    initColumnResize() {
+    initColumnResize: function() {
         const tbody = document.getElementById('paramTableBody');
         if (!tbody) return;
         const table = tbody.closest('table');
@@ -278,10 +259,7 @@ const TableManager = {
         const cols = colgroup.querySelectorAll('col');
         const headers = table.querySelectorAll('thead th');
 
-        if (headers.length === 0) {
-            console.warn('[TableManager] ⚠️ Заголовки таблицы не найдены');
-            return;
-        }
+        if (headers.length === 0) return;
 
         headers.forEach((th) => {
             if (th.querySelector('.resize-handle')) return;
@@ -302,6 +280,7 @@ const TableManager = {
 
             handle.addEventListener('mousedown', (e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 isResizing = true;
                 currentCol = cols[idx];
                 startX = e.clientX;
@@ -313,6 +292,7 @@ const TableManager = {
 
         document.addEventListener('mousemove', (e) => {
             if (!isResizing || !currentCol) return;
+            e.stopPropagation();
             const newWidth = Math.max(40, startWidth + (e.clientX - startX));
             currentCol.style.width = newWidth + 'px';
 
@@ -333,7 +313,7 @@ const TableManager = {
         console.log('[TableManager] ✅ Column resize инициализирован');
     },
 
-    initContextMenu() {
+    initContextMenu: function() {
         const tbody = document.getElementById('paramTableBody');
         if (!tbody) return;
 
@@ -349,7 +329,7 @@ const TableManager = {
         });
     },
 
-    showParamSettings(x, y, index) {
+    showParamSettings: function(x, y, index) {
         const popup = document.getElementById('paramSettingsPopup');
         if (!popup) return;
 
@@ -383,7 +363,6 @@ const TableManager = {
             document.getElementById('popupAutoMax').checked = settings.maxVal === null;
             document.getElementById('popupMax').disabled = settings.maxVal === null;
             document.getElementById('popupScale').value = currentScale;
-
             document.getElementById('popupScale').dataset.prevScale = currentScale;
         }
 
@@ -392,37 +371,23 @@ const TableManager = {
         popup.style.top = '0px';
 
         const popupRect = popup.getBoundingClientRect();
-        const popupWidth = popupRect.width;
-        const popupHeight = popupRect.height;
-
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
 
         let finalX = x;
         let finalY = y;
 
-        if (x + popupWidth > viewportWidth) {
-            finalX = viewportWidth - popupWidth - 10;
-        }
-
-        if (y + popupHeight > viewportHeight) {
-            finalY = viewportHeight - popupHeight - 10;
-        }
-
-        if (finalX < 10) {
-            finalX = 10;
-        }
-
-        if (finalY < 10) {
-            finalY = 10;
-        }
+        if (x + popupRect.width > viewportWidth) finalX = viewportWidth - popupRect.width - 10;
+        if (y + popupRect.height > viewportHeight) finalY = viewportHeight - popupRect.height - 10;
+        if (finalX < 10) finalX = 10;
+        if (finalY < 10) finalY = 10;
 
         popup.style.left = `${finalX}px`;
         popup.style.top = `${finalY}px`;
         popup.dataset.paramIndex = index;
     },
 
-    getParamSettings(index) {
+    getParamSettings: function(index) {
         return this.paramSettings[index] || {
             height: this.DEFAULT_HEIGHT,
             maxVal: null,
@@ -430,7 +395,7 @@ const TableManager = {
         };
     },
 
-    applyParamSettings(index, height, maxVal, scale) {
+    applyParamSettings: function(index, height, maxVal, scale) {
         const param = this.params[index];
         if (!param) return;
 
@@ -470,10 +435,12 @@ const TableManager = {
         }
     },
 
-    hideParamSettings() {
+    hideParamSettings: function() {
         const popup = document.getElementById('paramSettingsPopup');
         if (popup) {
             popup.style.display = 'none';
         }
     }
 };
+
+console.log('[TableManager] ✅ Модуль загружен');
