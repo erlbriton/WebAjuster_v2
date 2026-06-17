@@ -1,5 +1,3 @@
-//serial_manager.js
-
 const SerialManager = {
     port: null,
     writer: null,
@@ -13,7 +11,7 @@ const SerialManager = {
     oscilloCurrentIdx: 0,
     lastRequestAddr: 0,
     lastRequestChunk: null,
-    awaitingResponse: false,  // 🔥 НОВОЕ: флаг ожидания ответа (для RS-485)
+    awaitingResponse: false,
 
     async connect() {
         try {
@@ -78,97 +76,102 @@ const SerialManager = {
         return chunks;
     },
 
-          _startSender() {
-              (async () => {
-                  while (this.port && this.isConnected) {
-                      if (this.paused || this.oscilloChunks.length === 0) {
-                          await new Promise(r => setTimeout(r, 20));
-                          continue;
-                      }
+       _startSender() {
+           // 🔥 ПРОСТОЙ ЦИКЛ: пишет без ожидания ответа (как в тестовом проекте)
+           (async () => {
+               while (this.port && this.isConnected) {
+                   if (this.paused || this.oscilloChunks.length === 0) {
+                       await new Promise(r => setTimeout(r, 20));
+                       continue;
+                   }
 
-                      try {
-                          const chunk = this.oscilloChunks[this.oscilloCurrentIdx];
-                          this.lastRequestChunk = chunk;
-                          this.oscilloCurrentIdx = (this.oscilloCurrentIdx + 1) % this.oscilloChunks.length;
+                   try {
+                       const chunk = this.oscilloChunks[this.oscilloCurrentIdx];
+                       this.lastRequestChunk = chunk;
+                       this.oscilloCurrentIdx = (this.oscilloCurrentIdx + 1) % this.oscilloChunks.length;
 
-                          const body = new Uint8Array([
-                              0x01, 0x03,
-                              (chunk.start >> 8) & 0xFF, chunk.start & 0xFF,
-                              (chunk.count >> 8) & 0xFF, chunk.count & 0xFF
-                          ]);
-                          let crc = 0xFFFF;
-                          for (let b of body) { crc ^= b; for (let i = 0; i < 8; i++) crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : crc >> 1; }
+                       const body = new Uint8Array([
+                           0x01, 0x03,
+                           (chunk.start >> 8) & 0xFF, chunk.start & 0xFF,
+                           (chunk.count >> 8) & 0xFF, chunk.count & 0xFF
+                       ]);
+                       let crc = 0xFFFF;
+                       for (let b of body) { crc ^= b; for (let i = 0; i < 8; i++) crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : crc >> 1; }
 
-                          await this.writer.write(new Uint8Array([...body, crc & 0xFF, (crc >> 8) & 0xFF]));
+                       await this.writer.write(new Uint8Array([...body, crc & 0xFF, (crc >> 8) & 0xFF]));
 
-                          // 🔥 НОВОЕ: ждём фиксированное время перед следующим запросом
-                          // Это даёт устройству время ответить, а Receiver'у — прочитать данные
-                          await new Promise(r => setTimeout(r, 50));
-                      } catch (e) {
-                          console.error('[Serial] ❌ Ошибка отправки:', e.message);
-                          this.handleDisconnect(e);
-                          break;
-                      }
-                  }
-              })();
-          },
+                       // 🔥 Пауза 20мс (как в тестовом проекте)
+                       await new Promise(r => setTimeout(r, 20));
+                   } catch (e) {
+                       console.error('[Serial] ❌ Ошибка отправки:', e.message);
+                       this.handleDisconnect(e);
+                       break;
+                   }
+               }
+           })();
+       },
 
-          _startReceiver() {
-              let receiveCount = 0;
+       _startReceiver() {
+           let receiveCount = 0;
 
-              (async () => {
-                  while (this.port && this.isConnected) {
-                      try {
-                          const { value, done } = await this.reader.read();
-                          if (done) break;
-                          if (!value) continue;
+           // 🔥 НЕЗАВИСИМЫЙ ЦИКЛ: читает без синхронизации с Sender
+           (async () => {
+               while (this.port && this.isConnected) {
+                   try {
+                       const { value, done } = await this.reader.read();
+                       if (done) break;
+                       if (!value) continue;
 
-                          this.buffer.push(...value);
+                       this.buffer.push(...value);
 
-                          if (this.paused) continue;
+                       if (this.paused) continue;
 
-                          while (this.buffer.length >= 5) {
-                              if (this.buffer[0] === 0x01 && this.buffer[1] === 0x03) {
-                                  const byteCount = this.buffer[2];
-                                  const expectedLength = 3 + byteCount + 2;
+                       while (this.buffer.length >= 5) {
+                           if (this.buffer[0] === 0x01 && this.buffer[1] === 0x03) {
+                               const byteCount = this.buffer[2];
+                               const expectedLength = 3 + byteCount + 2;
 
-                                  if (this.buffer.length < expectedLength) break;
+                               if (this.buffer.length < expectedLength) break;
 
-                                  let crc = 0xFFFF;
-                                  for (let i = 0; i < expectedLength - 2; i++) {
-                                      crc ^= this.buffer[i];
-                                      for (let j = 0; j < 8; j++) crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : crc >> 1;
-                                  }
+                               let crc = 0xFFFF;
+                               for (let i = 0; i < expectedLength - 2; i++) {
+                                   crc ^= this.buffer[i];
+                                   for (let j = 0; j < 8; j++) crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : crc >> 1;
+                               }
 
-                                  const receivedCrc = this.buffer[expectedLength - 2] | (this.buffer[expectedLength - 1] << 8);
+                               const receivedCrc = this.buffer[expectedLength - 2] | (this.buffer[expectedLength - 1] << 8);
 
-                                  if (crc === receivedCrc) {
-                                      const values = [];
-                                      for (let i = 0; i < byteCount; i += 2) {
-                                          values.push((this.buffer[3 + i] << 8) | this.buffer[4 + i]);
-                                      }
+                               if (crc === receivedCrc) {
+                                   const values = [];
+                                   for (let i = 0; i < byteCount; i += 2) {
+                                       values.push((this.buffer[3 + i] << 8) | this.buffer[4 + i]);
+                                   }
 
-                                      if (this.onData && this.lastRequestChunk) {
-                                          this.onData(values, this.lastRequestChunk.start, performance.now());
-                                      }
+                                   // 🔥 Вызываем onData, но НЕ ждём завершения
+                                   if (this.onData && this.lastRequestChunk) {
+                                       // Используем setTimeout, чтобы не блокировать чтение
+                                       setTimeout(() => {
+                                           this.onData(values, this.lastRequestChunk.start, performance.now());
+                                       }, 0);
+                                   }
 
-                                      if (receiveCount++ % 100 === 0) {
-                                          console.log(`[Serial] ✅ Получено пакетов: ${receiveCount}`);
-                                      }
-                                  }
-                                  this.buffer.splice(0, expectedLength);
-                              } else {
-                                  this.buffer.shift();
-                              }
-                          }
-                      } catch (e) {
-                          console.error('[Serial] ❌ Ошибка чтения:', e.message);
-                          this.handleDisconnect(e);
-                          break;
-                      }
-                  }
-              })();
-          },//////////////////////////////////////////////////////////////////////////////////////////////
+                                   if (receiveCount++ % 100 === 0) {
+                                       console.log(`[Serial] ✅ Получено пакетов: ${receiveCount}`);
+                                   }
+                               }
+                               this.buffer.splice(0, expectedLength);
+                           } else {
+                               this.buffer.shift();
+                           }
+                       }
+                   } catch (e) {
+                       console.error('[Serial] ❌ Ошибка чтения:', e.message);
+                       this.handleDisconnect(e);
+                       break;
+                   }
+               }
+           })();
+       },
 
     handleDisconnect(error) {
         console.error('[Serial] 🔌 Ошибка устройства:', error.message);
@@ -274,7 +277,7 @@ window.wasmSerialTransceive = async function(requestBytes) {
                         console.log(`[Serial] 📥 Ответ получен: [${resHex}]`);
                         return response;
                     } else {
-                        console.warn(`[Serial] ⚠️ CRC не совпал. Ожид: ${crc.toString(16)}, Получ: ${receivedCrc.toString(16)}`);
+                        console.warn(`[Serial] ️ CRC не совпал. Ожид: ${crc.toString(16)}, Получ: ${receivedCrc.toString(16)}`);
                         SerialManager.buffer.shift();
                         lastLogLen = SerialManager.buffer.length;
                     }
@@ -291,7 +294,7 @@ window.wasmSerialTransceive = async function(requestBytes) {
         return new Uint8Array(0);
     } finally {
         SerialManager.paused = false;
-        SerialManager.awaitingResponse = false;  // 🔥 НОВОЕ: сбрасываем флаг при выходе
+        SerialManager.awaitingResponse = false;
         console.log('[Serial] ▶️ Осциллограф возобновлён');
     }
 };

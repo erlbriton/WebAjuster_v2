@@ -47,7 +47,7 @@ self.onmessage = (e) => {
             w: msg.width || c.width,
             h: msg.height || c.height,
             buffer: [],
-            settings: { maxVal: null },
+            settings: { maxVal: null, scale: msg.scale || 1.0 },
             color: msg.isDiscrete ? discreteColor : COLORS[msg.id % COLORS.length],
             isDiscrete: msg.isDiscrete || false,
             lastValue: null,
@@ -77,34 +77,46 @@ self.onmessage = (e) => {
             g.buffer.length = 0;
         }
     }
-           else if (msg.type === 'updateSettings') {
-               const g = graphs[msg.id];
-               if (g) {
-                   let needsRedraw = false;
+    else if (msg.type === 'updateSettings') {
+        const g = graphs[msg.id];
+        if (g) {
+            if (msg.width !== undefined && msg.width > 0) {
+                g.canvas.width = msg.width;
+                g.w = msg.width;
+            }
+            if (msg.height !== undefined && msg.height > 0) {
+                g.canvas.height = msg.height;
+                g.h = msg.height;
+            }
+            g.ctx = g.canvas.getContext('2d');
+            if (msg.maxVal !== undefined) {
+                g.settings.maxVal = msg.maxVal;
+            }
 
-                   if (msg.width !== undefined && msg.width > 0 && msg.width !== g.w) {
-                       g.canvas.width = msg.width;
-                       g.w = msg.width;
-                       needsRedraw = true;
-                   }
-                   if (msg.height !== undefined && msg.height > 0 && msg.height !== g.h) {
-                       g.canvas.height = msg.height;
-                       g.h = msg.height;
-                       needsRedraw = true;
-                   }
-                   g.ctx = g.canvas.getContext('2d');
-
-                   if (msg.maxVal !== undefined) {
-                       g.settings.maxVal = msg.maxVal;
-                   }
-
-                   // 🔥 Очищаем буфер ТОЛЬКО при изменении scale (не при ресайзе!)
-                   if (msg.scale !== undefined && msg.scale !== g.settings.scale) {
-                       g.settings.scale = msg.scale;
-                       g.buffer.length = 0;  // Очищаем только при смене шкалы
-                   }
-               }
-           }
+            // 🔥 Очищаем буфер ТОЛЬКО при изменении scale
+            if (msg.scale !== undefined && msg.scale !== g.settings.scale) {
+                g.settings.scale = msg.scale;
+                g.buffer.length = 0;
+            }
+        }
+    }
+    else if (msg.type === 'updateAllSizes') {
+        // 🔥 Пакетное обновление размеров (одно сообщение вместо 178)
+        msg.updates.forEach(update => {
+            const g = graphs[update.id];
+            if (g) {
+                if (update.width > 0 && update.width !== g.w) {
+                    g.canvas.width = update.width;
+                    g.w = update.width;
+                }
+                if (update.height > 0 && update.height !== g.h) {
+                    g.canvas.height = update.height;
+                    g.h = update.height;
+                }
+                g.ctx = g.canvas.getContext('2d');
+            }
+        });
+    }
 };
 
 let lastFrameTime = 0;

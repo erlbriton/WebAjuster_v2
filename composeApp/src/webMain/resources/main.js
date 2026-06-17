@@ -3,11 +3,11 @@ window.scopeWorker = scopeWorker;
 let isDeviceConnected = false;
 let regToBitsMap = {};
 
-// 🔥 НОВОЕ: буферы для пакетной обработки
+// 🔥 Буферы для пакетной обработки
 let pendingUpdates = [];
 let pendingWorkerData = [];
 let lastDomUpdateTime = 0;
-const DOM_UPDATE_INTERVAL = 66; // 15 Гц = обновление каждые 66мс
+const DOM_UPDATE_INTERVAL = 200; // 5 Гц = обновление каждые 200мс
 
 window.connectToDevice = async function() {
     try {
@@ -40,7 +40,7 @@ async function startSerial() {
     await SerialManager.start();
 }
 
-// 🔥 НОВОЕ: пакетная обработка DOM
+// 🔥 Пакетная обработка DOM
 function processDomUpdates() {
     if (pendingUpdates.length === 0) return;
 
@@ -126,52 +126,46 @@ window.oscilloStart = function(registersStr, baudRate) {
         SerialManager.oscilloChunks = SerialManager._buildChunks(addresses);
         SerialManager.oscilloCurrentIdx = 0;
 
-        // 🔥 НОВОЕ: устанавливаем обработчик данных ПОСЛЕ инициализации TableManager
-               SerialManager.onData = (values, startAddress, timestamp) => {
-                   // 🔥 НОВОЕ: сохраняем данные для асинхронной обработки
-                   const capturedValues = [...values];
-                   const capturedStartAddress = startAddress;
-                   const capturedTimestamp = timestamp;
+        // 🔥 Устанавливаем обработчик данных ПОСЛЕ инициализации TableManager
+        SerialManager.onData = (values, startAddress, timestamp) => {
+            values.forEach((regValue, offset) => {
+                const regAddr = startAddress + offset;
+                const bitsInfo = regToBitsMap[regAddr];
 
-                   // 🔥 НОВОЕ: планируем обработку на следующий микротаск (не блокирует Receiver)
-                   queueMicrotask(() => {
-                       capturedValues.forEach((regValue, offset) => {
-                           const regAddr = capturedStartAddress + offset;
-                           const bitsInfo = regToBitsMap[regAddr];
+                if (bitsInfo) {
+                    bitsInfo.forEach(({ graphIdx, bit }) => {
+                        const rawValue = bit === -1 ? regValue : (regValue >> bit) & 1;
 
-                           if (bitsInfo) {
-                               bitsInfo.forEach(({ graphIdx, bit }) => {
-                                   const rawValue = bit === -1 ? regValue : (regValue >> bit) & 1;
+                        const settings = TableManager.paramSettings[graphIdx] ?? {};
+                        const param = TableManager.params[graphIdx] ?? {};
+                        const scale = settings.scale ?? param.scale ?? 1.0;
 
-                                   const settings = TableManager.paramSettings[graphIdx] ?? {};
-                                   const param = TableManager.params[graphIdx] ?? {};
-                                   const scale = settings.scale ?? param.scale ?? 1.0;
+                        const physicalValue = rawValue * scale;
 
-                                   const physicalValue = rawValue * scale;
+                        pendingUpdates.push({ graphIdx, rawValue, physicalValue });
+                        pendingWorkerData.push({ graphIdx, physicalValue, timestamp });
+                    });
+                }
+            });
 
-                                   pendingUpdates.push({ graphIdx, rawValue, physicalValue });
-                                   pendingWorkerData.push({ graphIdx, physicalValue, timestamp: capturedTimestamp });
-                               });
-                           }
-                       });
+            // 🔥 Отправляем в Worker СРАЗУ (Worker быстрый, не блокирует)
+            if (pendingWorkerData.length > 0) {
+                scopeWorker.postMessage({
+                    type: 'dataBatch',
+                    items: pendingWorkerData
+                });
+                pendingWorkerData = [];
+            }
 
-                       if (pendingWorkerData.length > 0) {
-                           scopeWorker.postMessage({
-                               type: 'dataBatch',
-                               items: pendingWorkerData
-                           });
-                           pendingWorkerData = [];
-                       }
+            // 🔥 DOM обновляем с троттлингом (5 Гц)
+            const now = performance.now();
+            if (now - lastDomUpdateTime >= DOM_UPDATE_INTERVAL) {
+                lastDomUpdateTime = now;
+                requestAnimationFrame(processDomUpdates);
+            }
+        };
 
-                       const now = performance.now();
-                       if (now - lastDomUpdateTime >= DOM_UPDATE_INTERVAL) {
-                           lastDomUpdateTime = now;
-                           requestAnimationFrame(processDomUpdates);
-                       }
-                   });
-               };
-
-        console.log('[Main] 🚀 Запущен с ' + addresses.length + ' адресами');
+        console.log('[Main]  Запущен с ' + addresses.length + ' адресами');
     };
 
     tryStart();
@@ -202,7 +196,7 @@ window.oscilloStop = function() {
 };
 
 window.buildLeftPanel = function(jsonStr) {
-    console.log('[Main] 🏗️ buildLeftPanel вызван, длина: ' + jsonStr.length);
+    console.log('[Main] ️ buildLeftPanel вызван, длина: ' + jsonStr.length);
     try {
         window.ramParameters = JSON.parse(jsonStr);
 

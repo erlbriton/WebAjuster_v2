@@ -5,6 +5,8 @@ const TableManager = {
     visibleGraphIds: new Set(),
     visibilityObserver: null,
     domCache: {},
+    _resizeThrottled: false,
+    _resizeTimeout: null,
 
     init(scopeWorker) {
         const tbody = document.getElementById('paramTableBody');
@@ -88,7 +90,8 @@ const TableManager = {
                     canvas: offscreen,
                     width: 400,
                     height: this.DEFAULT_HEIGHT,
-                    isDiscrete: param.isDiscrete
+                    isDiscrete: param.isDiscrete,
+                    scale: param.scale || 1.0
                 }, [offscreen]);
                 console.log(`[TableManager] ✅ initGraph отправлен для #${idx}`);
             } catch (e) {
@@ -212,44 +215,47 @@ const TableManager = {
         return null;
     },
 
-          _resizeThrottled: false,
-          _resizeTimeout: null,
+    updateAllCanvasSizes(scopeWorker) {
+        // 🔥 Throttling: не чаще раза в 200мс при ресайзе
+        if (this._resizeThrottled) {
+            clearTimeout(this._resizeTimeout);
+            this._resizeTimeout = setTimeout(() => {
+                this._resizeThrottled = false;
+                this._doUpdateAllCanvasSizes(scopeWorker);
+            }, 200);
+            return;
+        }
 
-          updateAllCanvasSizes(scopeWorker) {
-              // 🔥 Throttling: не чаще раза в 200мс при ресайзе
-              if (this._resizeThrottled) {
-                  clearTimeout(this._resizeTimeout);
-                  this._resizeTimeout = setTimeout(() => {
-                      this._resizeThrottled = false;
-                      this._doUpdateAllCanvasSizes(scopeWorker);
-                  }, 200);
-                  return;
-              }
+        this._resizeThrottled = true;
+        this._doUpdateAllCanvasSizes(scopeWorker);
 
-              this._resizeThrottled = true;
-              this._doUpdateAllCanvasSizes(scopeWorker);
+        this._resizeTimeout = setTimeout(() => {
+            this._resizeThrottled = false;
+        }, 200);
+    },
 
-              this._resizeTimeout = setTimeout(() => {
-                  this._resizeThrottled = false;
-              }, 200);
-          },
+    _doUpdateAllCanvasSizes(scopeWorker) {
+        const rows = document.querySelectorAll('#paramTableBody tr');
+        const updates = [];
 
-          _doUpdateAllCanvasSizes(scopeWorker) {
-              const rows = document.querySelectorAll('#paramTableBody tr');
-              rows.forEach((row, idx) => {
-                  const graphCell = row.querySelector('.graph-cell');
-                  if (graphCell) {
-                      const rect = graphCell.getBoundingClientRect();
-                      scopeWorker.postMessage({
-                          type: 'updateSettings',
-                          id: idx,
-                          width: Math.round(rect.width),
-                          height: Math.round(rect.height)
-                          // 🔥 НЕ передаём scale — чтобы буфер не очищался!
-                      });
-                  }
-              });
-          },
+        rows.forEach((row, idx) => {
+            const graphCell = row.querySelector('.graph-cell');
+            if (graphCell) {
+                const rect = graphCell.getBoundingClientRect();
+                updates.push({
+                    id: idx,
+                    width: Math.round(rect.width),
+                    height: Math.round(rect.height)
+                });
+            }
+        });
+
+        // 🔥 Отправляем ОДНО сообщение со всеми размерами
+        scopeWorker.postMessage({
+            type: 'updateAllSizes',
+            updates: updates
+        });
+    },
 
     initColumnResize() {
         const tbody = document.getElementById('paramTableBody');
