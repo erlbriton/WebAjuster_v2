@@ -1,290 +1,240 @@
-﻿const scopeWorker = new Worker('scope_worker.js');
-window.scopeWorker = scopeWorker;
-let isDeviceConnected = false;
-let regToBitsMap = {};
+﻿// main.js - Главный поток (Main Thread)
 
-// 🔥 Буферы для пакетной обработки
-let pendingUpdates = [];
-let pendingWorkerData = [];
-let lastDomUpdateTime = 0;
-const DOM_UPDATE_INTERVAL = 200; // 5 Гц = обновление каждые 200мс
+let serialWorker = null;
+let scopeWorker = null;
+let messageChannel = null;
+let isInitialized = false;
 
+const config = {
+    slaveAddress: 0x01,
+    registerAddr: 0x002d,
+    paramsCount: 78,
+    baudRate: 115200
+};
+
+window.initApplication = async function() {
+    console.log('[Main] 🚀 Инициализация приложения...');
+
+    try {
+        messageChannel = new MessageChannel();
+        console.log('[Main] ✅ MessageChannel создан');
+
+        serialWorker = new Worker('serial_worker.js');
+        serialWorker.onmessage = handleSerialWorkerMessage;
+        serialWorker.onerror = handleError;
+        console.log('[Main] ✅ Serial Worker создан');
+
+        scopeWorker = new Worker('scope_worker.js');
+        scopeWorker.onmessage = handleScopeWorkerMessage;
+        scopeWorker.onerror = handleError;
+        console.log('[Main] ✅ Scope Worker создан');
+
+        serialWorker.postMessage({
+            type: 'setScopePort',
+            port: messageChannel.port1
+        }, [messageChannel.port1]);
+
+        scopeWorker.postMessage({
+            type: 'setSerialPort',
+            port: messageChannel.port2
+        }, [messageChannel.port2]);
+
+        console.log('[Main] ✅ Порты переданы воркерам');
+
+        const oscContainer = document.getElementById('osc-container');
+        if (oscContainer) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 800;
+            canvas.height = 600;
+            canvas.style.width = '100%';
+            canvas.style.height = '100%';
+            oscContainer.appendChild(canvas);
+
+            const offscreen = canvas.transferControlToOffscreen();
+            scopeWorker.postMessage({
+                type: 'setCanvas',
+                canvas: offscreen
+            }, [offscreen]);
+
+            console.log('[Main] ✅ Canvas передан в Scope Worker');
+        }
+
+        serialWorker.postMessage({
+            type: 'init',
+            config: config
+        });
+
+        scopeWorker.postMessage({
+            type: 'init',
+            config: {
+                paramsCount: config.paramsCount,
+                maxCapacity: 1000
+            }
+        });
+
+        isInitialized = true;
+        console.log('[Main] ✅ Приложение инициализировано');
+
+    } catch (error) {
+        console.error('[Main] ❌ Ошибка инициализации:', error.message);
+        alert('Ошибка инициализации: ' + error.message);
+    }
+};
+
+function handleSerialWorkerMessage(event) {
+    const msg = event.data;
+
+    switch (msg.type) {
+        case 'configReceived':
+            console.log('[Main] Serial Worker получил конфигурацию');
+            break;
+        case 'connected':
+            console.log('[Main] ✅ Порт подключён');
+            break;
+        case 'disconnected':
+            console.log('[Main] 🔌 Порт отключён');
+            break;
+        case 'started':
+            console.log('[Main]  Опрос запущен');
+            break;
+        case 'stopped':
+            console.log('[Main] ⏹️ Опрос остановлен');
+            break;
+        case 'data':
+            updateTableData(msg.values);
+            break;
+        case 'transceiveResponse':
+            handleTransceiveResponse(msg.data);
+            break;
+        case 'transceiveError':
+            console.error('[Main] Ошибка transceive:', msg.message);
+            handleTransceiveError(msg.message);
+            break;
+        case 'error':
+            console.error('[Main] Ошибка Serial Worker:', msg.message);
+            alert('Ошибка: ' + msg.message);
+            break;
+    }
+}
+
+function handleScopeWorkerMessage(event) {
+    const msg = event.data;
+
+    switch (msg.type) {
+        case 'initialized':
+            console.log('[Main] Scope Worker инициализирован');
+            break;
+        case 'error':
+            console.error('[Main] Ошибка Scope Worker:', msg.message);
+            break;
+    }
+}
+
+function handleError(error) {
+    console.error('[Main] ❌ Ошибка воркера:', error.message);
+}
+
+function updateTableData(values) {
+    // console.log('[Main] Данные для таблицы:', values);
+}
+
+// 🔥 ПРАВИЛЬНО: передаём САМИ STREAMS (они transferable!)
 window.connectToDevice = async function() {
-    try {
-        await SerialManager.connect();
-        isDeviceConnected = true;
-        startSerial();
-        console.log('[Main] ✅ COM-порт подключен');
-    } catch (err) {
-        console.error('[Main] ❌', err.message);
-        SerialManager.showError('Ошибка подключения: ' + err.message);
-    }
-};
-
-window.initOscilloscope = function() {
-    console.log('[Main] 🔍 Инициализация осциллографа');
-    const tbody = document.getElementById('paramTableBody');
-    if (!tbody) {
-        console.error('[Main] ❌ Таблица не найдена');
+    if (!isInitialized) {
+        alert('Приложение не инициализировано');
         return;
     }
-    if (tbody.children.length > 0) {
-        console.log('[Main] ⚠️ Осциллограф уже инициализирован');
+
+    console.log('[Main] 🔌 Запрос порта у пользователя...');
+
+    try {
+        const port = await navigator.serial.requestPort();
+        await port.open({ baudRate: config.baudRate });
+
+        console.log('[Main] ✅ Порт открыт, передаём STREAMS в Serial Worker...');
+
+        // 🔥 Передаём САМИ STREAMS (они transferable!)
+        const readable = port.readable;
+        const writable = port.writable;
+
+        serialWorker.postMessage({
+            type: 'setStreams',
+            readable: readable,
+            writable: writable
+        }, [readable, writable]);  // ← transfer list
+
+        console.log('[Main] ✅ Streams переданы в Serial Worker');
+
+    } catch (error) {
+        console.error('[Main] ❌ Ошибка подключения:', error.message);
+        alert('Ошибка подключения: ' + error.message);
+    }
+};
+
+window.disconnectFromDevice = function() {
+    serialWorker.postMessage({ type: 'disconnect' });
+};
+
+window.startOscilloscope = function() {
+    serialWorker.postMessage({ type: 'start' });
+    scopeWorker.postMessage({ type: 'start' });
+};
+
+window.stopOscilloscope = function() {
+    serialWorker.postMessage({ type: 'stop' });
+    scopeWorker.postMessage({ type: 'stop' });
+};
+
+window.readDeviceId = async function() {
+    if (!isInitialized) {
+        alert('Приложение не инициализировано');
         return;
     }
-    TableManager.init(scopeWorker);
-    console.log('[Main] ✅ Осциллограф инициализирован');
+
+    console.log('[Main] 🎯 readDeviceId вызвана');
+
+    const request = new Uint8Array([0x01, 0x11]);
+    const crc = calculateCRC16(request);
+    const fullRequest = new Uint8Array([0x01, 0x11, crc & 0xFF, (crc >> 8) & 0xFF]);
+
+    console.log('[Main] 📤 Запрос:', Array.from(fullRequest).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
+
+    serialWorker.postMessage({
+        type: 'transceive',
+        data: Array.from(fullRequest)
+    });
 };
 
-async function startSerial() {
-    await SerialManager.start();
+let transceiveCallback = null;
+
+function handleTransceiveResponse(data) {
+    console.log('[Main] 📥 Ответ:', Array.from(data).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
+
+    if (data.length > 2 && data[1] === 0x11) {
+        const byteCount = data[2];
+        const idData = data.slice(3, 3 + byteCount);
+        const deviceId = new TextDecoder('ascii').decode(idData);
+
+        console.log('[Main] ✅ ID устройства:', deviceId);
+
+        if (transceiveCallback) {
+            transceiveCallback(null, deviceId);
+        }
+    } else {
+        const error = 'Неверный формат ответа';
+        console.error('[Main] ❌', error);
+        if (transceiveCallback) {
+            transceiveCallback(error, null);
+        }
+    }
 }
 
-// 🔥 Пакетная обработка DOM
-function processDomUpdates() {
-    if (pendingUpdates.length === 0) return;
-
-    pendingUpdates.forEach(({ graphIdx, rawValue, physicalValue }) => {
-        TableManager.updateRow(graphIdx, rawValue, physicalValue);
-    });
-    pendingUpdates = [];
+function handleTransceiveError(error) {
+    console.error('[Main] ❌ Ошибка:', error);
+    if (transceiveCallback) {
+        transceiveCallback(error, null);
+    }
 }
-
-window.wasmSerialTransceive = async function(requestBytes) {
-    if (!SerialManager || !SerialManager.isConnected || !SerialManager.writer || !SerialManager.reader) {
-        return new Uint8Array(0);
-    }
-    const uint8Request = new Uint8Array(requestBytes.buffer, requestBytes.byteOffset, requestBytes.byteLength);
-    SerialManager.paused = true;
-    try {
-        await new Promise(r => setTimeout(r, 300));
-        SerialManager.buffer.splice(0, SerialManager.buffer.length);
-        await SerialManager.writer.write(uint8Request);
-        const timeout = 2000;
-        const startTime = performance.now();
-        while (performance.now() - startTime < timeout) {
-           if (SerialManager.buffer.length >= 5) {
-               const funcCode = SerialManager.buffer[1];
-               let expectedLength = 0;
-
-               if (funcCode === 0x03 || funcCode === 0x04 || funcCode === 0x11) {
-                   expectedLength = 3 + SerialManager.buffer[2] + 2;
-               }
-               else if (funcCode === 0x10) {
-                   expectedLength = 8;
-               }
-
-               if (expectedLength > 0 && SerialManager.buffer.length >= expectedLength) {
-                   const response = new Uint8Array(SerialManager.buffer.slice(0, expectedLength));
-                   SerialManager.buffer.splice(0, expectedLength);
-                   return response;
-               }
-           }
-            await new Promise(r => setTimeout(r, 10));
-        }
-        return new Uint8Array(0);
-    } catch (e) {
-        return new Uint8Array(0);
-    } finally {
-        SerialManager.paused = false;
-    }
-};
-
-window.ramParameters = [];
-
-window.oscilloStart = function(registersStr, baudRate) {
-    console.log('[Main] 🎬 oscilloStart вызван');
-
-    const tryStart = () => {
-        if (!window.ramParameters || window.ramParameters.length === 0) {
-            console.log('[Main] ⏳ Ждем загрузки параметров...');
-            setTimeout(tryStart, 300);
-            return;
-        }
-
-        window.initOscilloscope();
-
-        regToBitsMap = {};
-        const uniqueAddresses = new Set();
-
-        window.ramParameters.forEach((param, idx) => {
-            const match = param.register.match(/r([0-9a-fA-F]+)(?:\.([0-9a-fA-F]+))?/);
-            if (match) {
-                const regAddr = parseInt(match[1], 16);
-                const bitNum = match[2] !== undefined ? parseInt(match[2], 16) : -1;
-
-                if (!regToBitsMap[regAddr]) {
-                    regToBitsMap[regAddr] = [];
-                }
-                regToBitsMap[regAddr].push({ graphIdx: idx, bit: bitNum });
-                uniqueAddresses.add(regAddr);
-            }
-        });
-
-        const addresses = Array.from(uniqueAddresses).sort((a, b) => a - b);
-        SerialManager.oscilloAddresses = addresses;
-        SerialManager.oscilloChunks = SerialManager._buildChunks(addresses);
-        SerialManager.oscilloCurrentIdx = 0;
-
-        // 🔥 Устанавливаем обработчик данных ПОСЛЕ инициализации TableManager
-        SerialManager.onData = (values, startAddress, timestamp) => {
-            values.forEach((regValue, offset) => {
-                const regAddr = startAddress + offset;
-                const bitsInfo = regToBitsMap[regAddr];
-
-                if (bitsInfo) {
-                    bitsInfo.forEach(({ graphIdx, bit }) => {
-                        const rawValue = bit === -1 ? regValue : (regValue >> bit) & 1;
-
-                        const settings = TableManager.paramSettings[graphIdx] ?? {};
-                        const param = TableManager.params[graphIdx] ?? {};
-                        const scale = settings.scale ?? param.scale ?? 1.0;
-
-                        const physicalValue = rawValue * scale;
-
-                        pendingUpdates.push({ graphIdx, rawValue, physicalValue });
-                        pendingWorkerData.push({ graphIdx, physicalValue, timestamp });
-                    });
-                }
-            });
-
-            // 🔥 Отправляем в Worker СРАЗУ (Worker быстрый, не блокирует)
-            if (pendingWorkerData.length > 0) {
-                scopeWorker.postMessage({
-                    type: 'dataBatch',
-                    items: pendingWorkerData
-                });
-                pendingWorkerData = [];
-            }
-
-            // 🔥 DOM обновляем с троттлингом (5 Гц)
-            const now = performance.now();
-            if (now - lastDomUpdateTime >= DOM_UPDATE_INTERVAL) {
-                lastDomUpdateTime = now;
-                requestAnimationFrame(processDomUpdates);
-            }
-        };
-
-        console.log('[Main]  Запущен с ' + addresses.length + ' адресами');
-    };
-
-    tryStart();
-};
-
-window.oscilloStop = function() {
-    SerialManager.oscilloAddresses = [];
-    SerialManager.oscilloChunks = [];
-    regToBitsMap = {};
-
-    if (window.scopeWorker) {
-        window.scopeWorker.postMessage({ type: 'clearAllGraphs' });
-    }
-
-    const tbody = document.getElementById('paramTableBody');
-    if (tbody) {
-        tbody.innerHTML = '';
-    }
-
-    if (window.TableManager) {
-        TableManager.params = [];
-        TableManager.paramSettings = {};
-    }
-
-    window.ramParameters = [];
-
-    console.log('[Main] 🧹 Осциллограф очищен');
-};
-
-window.buildLeftPanel = function(jsonStr) {
-    console.log('[Main] ️ buildLeftPanel вызван, длина: ' + jsonStr.length);
-    try {
-        window.ramParameters = JSON.parse(jsonStr);
-
-        console.log('[Main] 📋 Первые 3 параметра:');
-        for (let i = 0; i < Math.min(3, window.ramParameters.length); i++) {
-            console.log(`  [${i}]:`, JSON.stringify(window.ramParameters[i]));
-        }
-
-        console.log('[Main] ✅ Сохранено ' + window.ramParameters.length + ' параметров');
-    } catch (e) {
-        console.error('[Main] ❌ Ошибка JSON:', e.message);
-        window.ramParameters = [];
-    }
-};
-
-window.updateLeftPanelValues = function(jsonStr) {};
-
-document.addEventListener('DOMContentLoaded', () => {
-    const popup = document.getElementById('paramSettingsPopup');
-    if (!popup) return;
-
-    const applyBtn = document.getElementById('popupApply');
-    const cancelBtn = document.getElementById('popupCancel');
-    const heightInput = document.getElementById('popupHeight');
-    const maxInput = document.getElementById('popupMax');
-    const autoMaxCheckbox = document.getElementById('popupAutoMax');
-    const scaleInput = document.getElementById('popupScale');
-
-    applyBtn.addEventListener('click', () => {
-        const index = parseInt(popup.dataset.paramIndex);
-        const height = heightInput.value;
-        const maxVal = autoMaxCheckbox.checked ? '' : maxInput.value;
-        const scale = scaleInput.value;
-
-        if (TableManager.applyParamSettings) {
-            TableManager.applyParamSettings(index, height, maxVal, scale);
-        }
-        TableManager.hideParamSettings();
-    });
-
-    cancelBtn.addEventListener('click', () => {
-        TableManager.hideParamSettings();
-    });
-
-    [heightInput, maxInput, scaleInput].forEach(input => {
-        if (input) {
-            input.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    applyBtn.click();
-                }
-            });
-        }
-    });
-
-    autoMaxCheckbox.addEventListener('change', () => {
-        maxInput.disabled = autoMaxCheckbox.checked;
-        if (autoMaxCheckbox.checked) {
-            maxInput.value = '';
-        }
-    });
-
-    if (scaleInput && maxInput) {
-        scaleInput.addEventListener('input', (e) => {
-            const newScale = parseFloat(e.target.value) || 1.0;
-            const prevScale = parseFloat(e.target.dataset.prevScale) || 1.0;
-            const currentMax = parseFloat(maxInput.value);
-
-            if (!isNaN(currentMax) && prevScale !== 0 && prevScale !== newScale) {
-                const newMax = currentMax * (newScale / prevScale);
-                maxInput.value = Number.isInteger(newMax) ? newMax : parseFloat(newMax.toFixed(6));
-            }
-
-            e.target.dataset.prevScale = newScale;
-        });
-    }
-
-    document.addEventListener('click', (e) => {
-        if (popup.style.display === 'block' && !popup.contains(e.target)) {
-            TableManager.hideParamSettings();
-        }
-    });
-
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && popup.style.display === 'block') {
-            TableManager.hideParamSettings();
-        }
-    });
-});
 
 function calculateCRC16(data) {
     let crc = 0xFFFF;
@@ -301,210 +251,9 @@ function calculateCRC16(data) {
     return crc;
 }
 
-window.readDeviceId = async function() {
-    console.log('[Main] 🎯 readDeviceId ВЫЗВАНА!');
-
-    try {
-        if (!SerialManager.isConnected) {
-            console.log('[Main] 🔌 Порт не открыт, подключаем...');
-            await SerialManager.connect();
-            await startSerial();
-            console.log('[Main] ✅ Порт подключен');
-        }
-
-        const addr = 0x01;
-        console.log(`[Main] 🔍 Пробуем адрес 0x${addr.toString(16).toUpperCase()}...`);
-
-        const request = new Uint8Array([addr, 0x11]);
-        const crc = calculateCRC16(request);
-        const fullRequest = new Uint8Array([addr, 0x11, crc & 0xFF, (crc >> 8) & 0xFF]);
-
-        console.log(`[Main] 📤 Запрос 0x11:`,
-            Array.from(fullRequest).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
-
-        const response = await window.wasmSerialTransceive(fullRequest);
-
-        if (response.length > 0 && response[1] === 0x11) {
-            console.log('[Main] 📥 Ответ на 0x11:',
-                Array.from(response).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
-
-            const byteCount = response[2];
-            const idData = response.slice(3, 3 + byteCount);
-            const deviceId = new TextDecoder('ascii').decode(idData);
-
-            console.log(`[Main] ✅ ID устройства:`, deviceId);
-
-            showCustomPopup(`ID устройства: ${deviceId}\nАдрес: 0x${addr.toString(16).toUpperCase()}`);
-            return;
-        }
-
-        console.error('[Main] ❌ Устройство не ответило на адресе 0x01');
-        showCustomPopup('Ошибка: устройство не отвечает на адресе 0x01');
-
-    } catch (err) {
-        console.error('[Main] ❌ Ошибка:', err.message);
-        showCustomPopup(`Ошибка: ${err.message}`);
-    }
-};
-
-function showCustomPopup(text) {
-    if (!document.getElementById('custom-popup-styles')) {
-        const style = document.createElement('style');
-        style.id = 'custom-popup-styles';
-        style.textContent = `
-            .custom-overlay {
-                position: fixed; inset: 0;
-                background: rgba(0, 0, 0, 0.4);
-                backdrop-filter: blur(5px);
-                -webkit-backdrop-filter: blur(5px);
-                z-index: 20000;
-                display: flex; align-items: center; justify-content: center;
-                animation: fadeIn 0.2s ease-out;
-            }
-            .custom-box {
-                background: #ffffff;
-                padding: 28px 32px;
-                border-radius: 16px;
-                min-width: 320px; max-width: 480px;
-                box-shadow: 0 20px 40px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05);
-                font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-                text-align: center;
-                animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-            }
-            .custom-icon { font-size: 42px; margin-bottom: 12px; display: block; line-height: 1; }
-            .custom-text {
-                font-size: 15px; color: #374151; margin-bottom: 24px;
-                white-space: pre-line; line-height: 1.6; font-weight: 500;
-            }
-            .custom-btn {
-                padding: 10px 28px;
-                background: #2563eb; color: white;
-                border: none; border-radius: 8px;
-                cursor: pointer; font-family: inherit; font-size: 14px; font-weight: 600;
-                transition: all 0.2s ease;
-                box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
-            }
-            .custom-btn:hover { background: #1d4ed8; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35); }
-            .custom-btn:active { transform: translateY(0); }
-
-            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-            @keyframes slideUp { from { opacity: 0; transform: translateY(20px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
-        `;
-        document.head.appendChild(style);
-    }
-
-    const overlay = document.createElement('div');
-    overlay.className = 'custom-overlay';
-
-    const box = document.createElement('div');
-    box.className = 'custom-box';
-
-    box.innerHTML = `
-        <span class="custom-icon">📡</span>
-        <div class="custom-text">${text}</div>
-        <button class="custom-btn" id="custom-popup-close">Закрыть</button>
-    `;
-
-    overlay.appendChild(box);
-    document.body.appendChild(overlay);
-
-    const closePopup = () => {
-        if (document.body.contains(overlay)) {
-            document.body.removeChild(overlay);
-        }
-    };
-
-    document.getElementById('custom-popup-close').addEventListener('click', closePopup);
-    overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) closePopup();
-    });
-}
-
-const userInputField = document.getElementById('userInputField');
-const outputField = document.getElementById('outputField');
-
-if (userInputField) {
-    userInputField.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            const text = userInputField.value.trim();
-            if (text) {
-                console.log('[Main] 📝 Введён текст:', text);
-                processUserInput(text);
-            }
-        }
-    });
-}
-
-async function processUserInput(text) {
-    if (!outputField) return;
-
-    const match = text.match(/^([^=]+)=(.+)$/);
-    if (!match) {
-        outputField.value = '❌ Формат: Имя=Значение';
-        return;
-    }
-
-    const paramName = match[1].trim();
-    const valueStr = match[2].trim();
-
-    const value = parseInt(valueStr);
-    if (isNaN(value) || value < 0 || value > 65535) {
-        outputField.value = `❌ Некорректное значение: ${valueStr}`;
-        return;
-    }
-
-    const param = TableManager.params.find(p => p.name === paramName);
-    if (!param) {
-        outputField.value = `❌ Параметр не найден: ${paramName}`;
-        return;
-    }
-
-    const regMatch = param.register.match(/r([0-9a-fA-F]+)/);
-    if (!regMatch) {
-        outputField.value = `❌ Неверный формат регистра: ${param.register}`;
-        return;
-    }
-
-    const regAddr = parseInt(regMatch[1], 16);
-
-    const requestWithoutCrc = new Uint8Array([
-        0x01,
-        0x10,
-        (regAddr >> 8) & 0xFF,
-        regAddr & 0xFF,
-        0x00, 0x01,
-        0x02,
-        (value >> 8) & 0xFF,
-        value & 0xFF
-    ]);
-
-    const crc = calculateCRC16(requestWithoutCrc);
-    const request = new Uint8Array([
-        ...requestWithoutCrc,
-        crc & 0xFF,
-        (crc >> 8) & 0xFF
-    ]);
-
-    console.log(`[Main] 📝 Запись ${paramName}=${value} в регистр 0x${regAddr.toString(16).toUpperCase()}:`,
-        Array.from(request).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
-
-    try {
-        const response = await window.wasmSerialTransceive(request);
-
-        if (response.length > 0 && response[1] === 0x10) {
-            console.log('[Main] ✅ Запись успешна:',
-                Array.from(response).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
-            outputField.value = `✅ ${paramName}=${value} записано`;
-
-            TableManager.updateRow(param.graphIdx, value, value * (param.scale || 1.0));
-        } else {
-            console.error('[Main] ❌ Ошибка записи:', response);
-            outputField.value = `❌ Ошибка записи: нет ответа`;
-        }
-    } catch (err) {
-        console.error('[Main] ❌ Ошибка:', err.message);
-        outputField.value = `❌ Ошибка: ${err.message}`;
-    }
-}
+window.addEventListener('load', function() {
+    console.log('[Main] Страница загружена');
+    window.initApplication();
+});
 
 console.log('[Main] ✅ main.js загружен');
