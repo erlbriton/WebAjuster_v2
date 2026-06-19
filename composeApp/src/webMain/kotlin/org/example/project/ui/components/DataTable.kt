@@ -16,6 +16,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
@@ -64,8 +65,14 @@ fun DataTable(modifier: Modifier = Modifier) {
     // 1. Создаем состояние прокрутки таблицы
     val tableScrollState = androidx.compose.foundation.lazy.rememberLazyListState()
 
-    // ВНЕШНИЙ изолированный Box. Скроллбар живет здесь и НЕ жмет таблицу!
-    Box(modifier = modifier.fillMaxSize()) {
+    // 🔥 ВНЕШНИЙ изолированный Box с graphicsLayer для изоляции от DOM
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                clip = true
+            }
+    ) {
 
         // ВНУТРЕННИЙ Box, где мы используем BoxWithConstraints вместо onGloballyPositioned.
         // Это железно защищает от бесконечных циклов изменения размеров!
@@ -107,8 +114,11 @@ fun DataTable(modifier: Modifier = Modifier) {
                         state = tableScrollState,
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        // ВРЕМЕННО УБИРАЕМ КЛЮЧИ ВООБЩЕ
-                        itemsIndexed(vm.parameters) { _, param ->
+                        // 🔥 ДОБАВИЛИ КЛЮЧИ для оптимизации перерисовки!
+                        itemsIndexed(
+                            items = vm.parameters,
+                            key = { index, param -> param.code }
+                        ) { index, param ->
                             Box(modifier = Modifier.fillMaxWidth().height(24.dp)) {
                                 ParameterRow(
                                     param = param,

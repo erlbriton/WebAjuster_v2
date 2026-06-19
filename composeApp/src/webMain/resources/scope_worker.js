@@ -41,10 +41,10 @@ self.onmessage = function(event) {
             break;
 
         case 'setCanvas':
-            // Получаем OffscreenCanvas из главного потока
+            // Получаем новый OffscreenCanvas (рендер НЕ останавливаем!)
             canvas = msg.canvas;
             ctx = canvas.getContext('2d');
-            console.log('[ScopeWorker] ✅ Canvas получен, размер:', canvas.width, 'x', canvas.height);
+            console.log('[ScopeWorker] ✅ Новый canvas получен, размер:', canvas.width, 'x', canvas.height);
             break;
 
         case 'start':
@@ -58,6 +58,15 @@ self.onmessage = function(event) {
         case 'clearBuffers':
             clearBuffers();
             break;
+
+            case 'resize':
+                if (canvas) {
+                    // 🔥 Важно: меняем размер OffscreenCanvas изнутри Worker'а
+                    canvas.width = msg.width;
+                    canvas.height = msg.height;
+                    console.log('[ScopeWorker] 📐 OffscreenCanvas resized:', msg.width, 'x', msg.height);
+                }
+                break;
     }
 };
 

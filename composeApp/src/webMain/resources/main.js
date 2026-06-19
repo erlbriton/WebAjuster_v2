@@ -1,10 +1,15 @@
 ﻿// main.js - Главный поток (Main Thread)
+// 🔥 ОСЦИЛЛОГРАФ ВЫНЕСЕН ИЗ COMPOSE - создаётся в document.body!
 
 let serialWorker = null;
 let scopeWorker = null;
 let messageChannel = null;
 let isInitialized = false;
 let isConnected = false;
+
+// 🔥 Глобальные переменные для осциллографа
+let oscCanvas = null;
+let oscWrapper = null;
 
 const config = {
     slaveAddress: 0x01,
@@ -42,23 +47,8 @@ window.initApplication = async function() {
 
         console.log('[Main] ✅ Порты переданы воркерам');
 
-        const oscContainer = document.getElementById('osc-container');
-        if (oscContainer) {
-            const canvas = document.createElement('canvas');
-            canvas.width = 800;
-            canvas.height = 600;
-            canvas.style.width = '100%';
-            canvas.style.height = '100%';
-            oscContainer.appendChild(canvas);
-
-            const offscreen = canvas.transferControlToOffscreen();
-            scopeWorker.postMessage({
-                type: 'setCanvas',
-                canvas: offscreen
-            }, [offscreen]);
-
-            console.log('[Main] ✅ Canvas передан в Scope Worker');
-        }
+        // 🔥 СОЗДАЁМ ОСЦИЛЛОГРАФ ВНЕ COMPOSE - прямо в document.body!
+        createOscilloscopeOutsideCompose();
 
         serialWorker.postMessage({
             type: 'init',
@@ -81,6 +71,32 @@ window.initApplication = async function() {
         alert('Ошибка инициализации: ' + error.message);
     }
 };
+
+// 🔥 ГЛАВНАЯ ФУНКЦИЯ: Создаёт осциллограф ВНЕ Compose
+function createOscilloscopeOutsideCompose() {
+    // 1. Создаём wrapper (контейнер)
+    oscWrapper = document.createElement('div');
+    oscWrapper.id = 'osc-wrapper';
+    oscWrapper.style.cssText = `
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 50vw !important;
+        height: 100vh !important;
+        background: #1a1a1a !important;
+        z-index: 2147483647 !important;
+        display: none;
+        box-shadow: 5px 0 20px rgba(0,0,0,0.5);
+        pointer-events: auto;
+        overflow: hidden;
+    `;
+
+    // 2. Добавляем в document.body
+    document.body.appendChild(oscWrapper);
+
+    // 3. Canvas будет создан при первом открытии осциллографа
+    console.log('[Main] ✅ Wrapper осциллографа создан (canvas будет создан при открытии)');
+}
 
 function handleSerialWorkerMessage(event) {
     const msg = event.data;
@@ -186,7 +202,7 @@ window.stopOscilloscope = function() {
     scopeWorker.postMessage({ type: 'stop' });
 };
 
-// 🔥 ГЛАВНАЯ ФУНКЦИЯ ДЛЯ KOTLIN (имя точно readDeviceId!)
+// 🔥 ФУНКЦИЯ ДЛЯ KOTLIN: Чтение Device ID
 window.readDeviceId = async function() {
     console.log('[Main] 🎯 readDeviceId вызвана из Kotlin');
 
@@ -196,7 +212,6 @@ window.readDeviceId = async function() {
     }
 
     try {
-        // 1. Если порт не открыт — открываем
         if (!isConnected) {
             console.log('[Main] 🔌 Порт не подключён, подключаем...');
             const port = await navigator.serial.requestPort();
@@ -225,7 +240,6 @@ window.readDeviceId = async function() {
             console.log('[Main] ✅ Порт уже открыт');
         }
 
-        // 2. Отправляем Modbus 0x11
         console.log('[Main] 📤 Отправка 0x11...');
         const request = new Uint8Array([0x01, 0x11]);
         const crc = calculateCRC16(request);
@@ -233,7 +247,6 @@ window.readDeviceId = async function() {
 
         serialWorker.postMessage({ type: 'transceive', data: Array.from(fullRequest) });
 
-        // 3. Ждём ответ
         const response = await new Promise((resolve, reject) => {
             const timeout = setTimeout(() => reject(new Error('Таймаут')), 3000);
             const handler = (e) => {
@@ -250,10 +263,8 @@ window.readDeviceId = async function() {
             serialWorker.addEventListener('message', handler);
         });
 
-        // 4. Парсим и показываем popup
         if (response.length > 2 && response[1] === 0x11) {
             const byteCount = response[2];
-            // 🔥 ВАЖНО: преобразуем в Uint8Array перед декодированием!
             const idData = new Uint8Array(response.slice(3, 3 + byteCount));
             const deviceId = new TextDecoder('ascii').decode(idData);
             console.log('[Main] ✅ ID:', deviceId);
@@ -283,7 +294,7 @@ function showDeviceIdPopup(deviceId) {
         padding: 15px 25px;
         border-radius: 8px;
         box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-        z-index: 10000;
+        z-index: 100000;
         font-family: 'Courier New', monospace;
         text-align: center;
     `;
@@ -307,7 +318,7 @@ function showDeviceIdPopup(deviceId) {
         right: 0;
         bottom: 0;
         background: rgba(0,0,0,0.5);
-        z-index: 9999;
+        z-index: 99999;
     `;
     overlay.onclick = () => {
         popup.remove();
@@ -341,83 +352,164 @@ function calculateCRC16(data) {
     return crc;
 }
 
+// 🔥 ФУНКЦИЯ ДЛЯ KOTLIN: Открыть/закрыть осциллограф
+// 🔥 ФУНКЦИЯ ДЛЯ KOTLIN: Открыть/закрыть осциллограф
+window.toggleOscilloscopeVisibility = async function(isVisible) {
+    console.log('[Main] 🎯 toggleOscilloscopeVisibility вызвана с isVisible =', isVisible);
+
+    if (!oscWrapper) {
+        console.error('[Main] ❌ Осциллограф не создан');
+        return;
+    }
+
+    if (isVisible) {
+        console.log('[Main] 🔍 Открываем осциллограф...');
+
+        // 1. Если порт не открыт — открываем
+        if (!isConnected) {
+            console.log('[Main] 🔌 Порт не подключён, подключаем...');
+            try {
+                const port = await navigator.serial.requestPort();
+                await port.open({ baudRate: config.baudRate });
+
+                const readable = port.readable;
+                const writable = port.writable;
+
+                serialWorker.postMessage({
+                    type: 'setStreams',
+                    readable: readable,
+                    writable: writable
+                }, [readable, writable]);
+
+                await new Promise((resolve) => {
+                    const handler = (e) => {
+                        if (e.data.type === 'connected') {
+                            serialWorker.removeEventListener('message', handler);
+                            resolve();
+                        }
+                    };
+                    serialWorker.addEventListener('message', handler);
+                });
+                console.log('[Main] ✅ Порт подключён');
+            } catch (error) {
+                console.error('[Main] ❌ Ошибка подключения:', error.message);
+                alert('Ошибка подключения: ' + error.message);
+                return;
+            }
+        }
+
+        // 2. 🔥 Создаём canvas с актуальным размером
+        if (oscCanvas) {
+            oscCanvas.remove();
+        }
+
+        const newWidth = Math.floor(window.innerWidth / 2);
+        const newHeight = Math.floor(window.innerHeight);
+
+        oscCanvas = document.createElement('canvas');
+        oscCanvas.id = 'osc-canvas';
+        oscCanvas.width = newWidth;
+        oscCanvas.height = newHeight;
+        oscCanvas.style.cssText = `
+            width: 100%;
+            height: 100%;
+            display: block;
+        `;
+        oscWrapper.appendChild(oscCanvas);
+
+        // Передаём новый canvas в Worker
+        const newOffscreen = oscCanvas.transferControlToOffscreen();
+        scopeWorker.postMessage({
+            type: 'setCanvas',
+            canvas: newOffscreen
+        }, [newOffscreen]);
+
+        console.log('[Main] 📐 Canvas создан:', newWidth, 'x', newHeight);
+
+        // 3. Показываем wrapper
+        oscWrapper.style.display = 'block';
+        oscWrapper.style.visibility = 'visible';
+        oscWrapper.style.opacity = '1';
+
+        console.log('[Main] 🔍 Wrapper показан');
+
+        // 4. Запускаем опрос
+        serialWorker.postMessage({ type: 'start' });
+        scopeWorker.postMessage({ type: 'start' });
+
+        console.log('[Main] ✅ Осциллограф открыт и запущен');
+
+    } else {
+        console.log('[Main] 👁️ Закрываем осциллограф...');
+
+        // 🔥 ОСТАНАВЛИВАЕМ рендер ПЕРЕД скрытием
+        serialWorker.postMessage({ type: 'stop' });
+        scopeWorker.postMessage({ type: 'stop' });
+
+        oscWrapper.style.display = 'none';
+
+        console.log('[Main] ✅ Осциллограф закрыт');
+    }
+};
+
 window.addEventListener('load', function() {
     console.log('[Main] Страница загружена');
     window.initApplication();
 });
 
-/// 🔥 ФУНКЦИЯ ДЛЯ KOTLIN: Открыть/закрыть осциллограф (с параметром!)
- window.toggleOscilloscopeVisibility = async function(isVisible) {
- //alert('ФУНКЦИЯ ВЫЗВАНА! isVisible = ' + isVisible);  // 🔥
-     console.log('[Main] 🎯 toggleOscilloscopeJS вызвана с isVisible =', isVisible);
+// 🔥 Обработчик resize с debounce
+let resizeTimeout = null;
+let isResizing = false;
 
-     const oscContainer = document.getElementById('osc-container');
-     if (!oscContainer) {
-         console.error('[Main] ❌ Контейнер осциллографа не найден');
-         return;
-     }
+window.addEventListener('resize', function() {
+    if (!oscWrapper || oscWrapper.style.display === 'none') return;
 
-     if (isVisible) {
-         // 🔥 ОТКРЫВАЕМ осциллограф
-         console.log('[Main] 🔍 Открываем осциллограф...');
+    console.log('[Main] 📐 Resize started');
+    isResizing = true;
 
-         // 1. Если порт не открыт — открываем
-         if (!isConnected) {
-             console.log('[Main] 🔌 Порт не подключён, подключаем...');
-             try {
-                 const port = await navigator.serial.requestPort();
-                 await port.open({ baudRate: config.baudRate });
+    // 🔥 ОСТАНАВЛИВАЕМ рендер во время resize
+    scopeWorker.postMessage({ type: 'stop' });
 
-                 const readable = port.readable;
-                 const writable = port.writable;
+    // Очищаем предыдущий таймаут
+    if (resizeTimeout) clearTimeout(resizeTimeout);
 
-                 serialWorker.postMessage({
-                     type: 'setStreams',
-                     readable: readable,
-                     writable: writable
-                 }, [readable, writable]);
+    // Ждём 300ms после окончания resize
+    resizeTimeout = setTimeout(() => {
+        console.log('[Main] 📐 Resize finished, пересоздаю canvas');
 
-                 await new Promise((resolve) => {
-                     const handler = (e) => {
-                         if (e.data.type === 'connected') {
-                             serialWorker.removeEventListener('message', handler);
-                             resolve();
-                         }
-                     };
-                     serialWorker.addEventListener('message', handler);
-                 });
-                 console.log('[Main] ✅ Порт подключён');
-             } catch (error) {
-                 console.error('[Main] ❌ Ошибка подключения:', error.message);
-                 alert('Ошибка подключения: ' + error.message);
-                 return;
-             }
-         }
+        // Пересоздаём canvas с новым размером
+        if (oscCanvas) {
+            oscCanvas.remove();
+        }
 
-         // 2. Показываем контейнер
-         oscContainer.classList.add('visible');
-         oscContainer.style.left = '0';
-         oscContainer.style.right = 'auto';
+        const newWidth = Math.floor(window.innerWidth / 2);
+        const newHeight = Math.floor(window.innerHeight);
 
-         // 3. Запускаем опрос
-         serialWorker.postMessage({ type: 'start' });
-         scopeWorker.postMessage({ type: 'start' });
+        oscCanvas = document.createElement('canvas');
+        oscCanvas.id = 'osc-canvas';
+        oscCanvas.width = newWidth;
+        oscCanvas.height = newHeight;
+        oscCanvas.style.cssText = `
+            width: 100%;
+            height: 100%;
+            display: block;
+        `;
+        oscWrapper.appendChild(oscCanvas);
 
-         console.log('[Main] ✅ Осциллограф открыт и запущен');
+        // Передаём новый canvas в Worker
+        const newOffscreen = oscCanvas.transferControlToOffscreen();
+        scopeWorker.postMessage({
+            type: 'setCanvas',
+            canvas: newOffscreen
+        }, [newOffscreen]);
 
-     } else {
-         // 🔥 ЗАКРЫВАЕМ осциллограф
-         console.log('[Main] 👁️ Закрываем осциллограф...');
+        console.log('[Main] 📐 Новый canvas:', newWidth, 'x', newHeight);
 
-         // 1. Останавливаем опрос
-         serialWorker.postMessage({ type: 'stop' });
-         scopeWorker.postMessage({ type: 'stop' });
+        // 🔥 ЗАПУСКАЕМ рендер снова
+        scopeWorker.postMessage({ type: 'start' });
+        isResizing = false;
 
-         // 2. Скрываем контейнер
-         oscContainer.classList.remove('visible');
-
-         console.log('[Main] ✅ Осциллограф закрыт');
-     }
- };
+    }, 300); // 300ms debounce
+});
 
 console.log('[Main] ✅ main.js загружен');
