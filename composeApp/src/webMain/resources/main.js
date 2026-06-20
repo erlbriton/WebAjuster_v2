@@ -8,18 +8,21 @@ let isInitialized = false;
 let isConnected = false;
 
 // 🔥 Глобальные переменные для осциллографа
-let oscCanvas = null;
 let oscWrapper = null;
+let graphContexts = [];
+let oscTableVisible = false;
+let oscColumnWeights = [0.15, 0.15, 0.20, 0.10, 0.40];
 
 const config = {
     slaveAddress: 0x01,
     registerAddr: 0x002d,
     paramsCount: 78,
-    baudRate: 115200
+    baudRate: 115200,
+    maxCapacity: 1000
 };
 
 window.initApplication = async function() {
-    console.log('[Main] 🚀 Инициализация приложения...');
+    console.log('[Main]  Инициализация приложения...');
 
     try {
         messageChannel = new MessageChannel();
@@ -47,7 +50,6 @@ window.initApplication = async function() {
 
         console.log('[Main] ✅ Порты переданы воркерам');
 
-        // 🔥 СОЗДАЁМ ОСЦИЛЛОГРАФ ВНЕ COMPOSE - прямо в document.body!
         createOscilloscopeOutsideCompose();
 
         serialWorker.postMessage({
@@ -67,15 +69,13 @@ window.initApplication = async function() {
         console.log('[Main] ✅ Приложение инициализировано');
 
     } catch (error) {
-        console.error('[Main] ❌ Ошибка инициализации:', error.message);
+        console.error('[Main]  Ошибка инициализации:', error.message);
         alert('Ошибка инициализации: ' + error.message);
     }
 };
 
 // 🔥 ГЛАВНАЯ ФУНКЦИЯ: Создаёт осциллограф ВНЕ Compose
-// 🔥 ГЛАВНАЯ ФУНКЦИЯ: Создаёт осциллограф ВНЕ Compose
 function createOscilloscopeOutsideCompose() {
-    // 1. Создаём wrapper (контейнер)
     oscWrapper = document.createElement('div');
     oscWrapper.id = 'osc-wrapper';
     oscWrapper.style.cssText = `
@@ -92,11 +92,20 @@ function createOscilloscopeOutsideCompose() {
         overflow: hidden;
     `;
 
-    // 2. 🔥 Перемещаем панель ввода ВНУТРЬ осциллографа
+    // 🔥 Перемещаем таблицу осциллографа ВНУТРЬ wrapper
+    const oscTable = document.getElementById('oscTable');
+    if (oscTable) {
+        oscWrapper.appendChild(oscTable);
+        oscTable.style.display = 'block';
+        oscTable.style.width = '100%';
+        oscTable.style.height = '100%';
+        console.log('[Main] ✅ Таблица осциллографа перемещена внутрь wrapper');
+    }
+
+    // 🔥 Перемещаем панель ввода ВНУТРЬ осциллографа
     const inputPanel = document.getElementById('paramInputPanel');
     if (inputPanel) {
         oscWrapper.appendChild(inputPanel);
-        // Убираем fixed позиционирование, делаем relative внутри wrapper
         inputPanel.style.position = 'absolute';
         inputPanel.style.bottom = '0';
         inputPanel.style.left = '0';
@@ -105,11 +114,8 @@ function createOscilloscopeOutsideCompose() {
         console.log('[Main] ✅ Панель ввода перемещена внутрь осциллографа');
     }
 
-    // 3. Добавляем в document.body
     document.body.appendChild(oscWrapper);
-
-    // 4. Canvas будет создан при первом открытии осциллографа
-    console.log('[Main] ✅ Wrapper осциллографа создан (canvas будет создан при открытии)');
+    console.log('[Main] ✅ Wrapper осциллографа создан');
 }
 
 function handleSerialWorkerMessage(event) {
@@ -124,7 +130,7 @@ function handleSerialWorkerMessage(event) {
             isConnected = true;
             break;
         case 'disconnected':
-            console.log('[Main] 🔌 Порт отключён');
+            console.log('[Main]  Порт отключён');
             isConnected = false;
             break;
         case 'started':
@@ -156,6 +162,10 @@ function handleScopeWorkerMessage(event) {
     switch (msg.type) {
         case 'initialized':
             console.log('[Main] Scope Worker инициализирован');
+            break;
+        case 'graphData':
+            console.log('[Main] 📊 Получены данные графиков:', msg.data.length, 'буферов');
+            drawGraphsFromData(msg.data);
             break;
         case 'error':
             console.error('[Main] Ошибка Scope Worker:', msg.message);
@@ -227,7 +237,7 @@ window.readDeviceId = async function() {
 
     try {
         if (!isConnected) {
-            console.log('[Main] 🔌 Порт не подключён, подключаем...');
+            console.log('[Main]  Порт не подключён, подключаем...');
             const port = await navigator.serial.requestPort();
             await port.open({ baudRate: config.baudRate });
 
@@ -348,7 +358,7 @@ function handleTransceiveResponse(data) {
 }
 
 function handleTransceiveError(error) {
-    console.error('[Main] ❌ Ошибка:', error);
+    console.error('[Main]  Ошибка:', error);
 }
 
 function calculateCRC16(data) {
@@ -367,7 +377,6 @@ function calculateCRC16(data) {
 }
 
 // 🔥 ФУНКЦИЯ ДЛЯ KOTLIN: Открыть/закрыть осциллограф
-// 🔥 ФУНКЦИЯ ДЛЯ KOTLIN: Открыть/закрыть осциллограф
 window.toggleOscilloscopeVisibility = async function(isVisible) {
     console.log('[Main] 🎯 toggleOscilloscopeVisibility вызвана с isVisible =', isVisible);
 
@@ -376,57 +385,45 @@ window.toggleOscilloscopeVisibility = async function(isVisible) {
         return;
     }
 
-    // 🔥 Находим панель ввода СРАЗУ (доступна в обоих блоках)
     const inputPanel = document.getElementById('paramInputPanel');
-    console.log('[Main] 🔍 Панель ввода найдена:', inputPanel !== null);
 
     if (isVisible) {
         console.log('[Main] 🔍 Открываем осциллограф...');
 
-        if (inputPanel) {
-            console.log('[Main] 🔍 Убираем класс hidden');
-            inputPanel.classList.remove('hidden');
-            console.log('[Main] 🔍 Классы после удаления:', inputPanel.className);
-        } else {
-            console.error('[Main] ❌ Панель ввода НЕ НАЙДЕНА!');
-        }////////////////////////////////////////////////////////////////
-
-        // 2. 🔥 Пересоздаём canvas с актуальным размером
-        if (oscCanvas) {
-            oscCanvas.remove();
+        // 🔥 Перемещаем панель ввода
+        if (inputPanel && inputPanel.parentNode !== oscWrapper) {
+            oscWrapper.appendChild(inputPanel);
+            inputPanel.style.position = 'absolute';
+            inputPanel.style.bottom = '0';
+            inputPanel.style.left = '0';
+            inputPanel.style.width = '100%';
+            inputPanel.style.zIndex = '10';
+            inputPanel.style.background = '#1a1a1a';
+            inputPanel.style.borderTop = '1px solid #444';
+            inputPanel.style.borderLeft = 'none';
+            inputPanel.style.borderRight = 'none';
         }
 
-        const newWidth = Math.floor(window.innerWidth / 2);
-        const newHeight = Math.floor(window.innerHeight);
+        if (inputPanel) {
+            inputPanel.classList.remove('hidden');
+            inputPanel.style.display = 'flex';
+        }
 
-        oscCanvas = document.createElement('canvas');
-        oscCanvas.id = 'osc-canvas';
-        oscCanvas.width = newWidth;
-        oscCanvas.height = newHeight;
-        oscCanvas.style.cssText = `
-            width: 100%;
-            height: 100%;
-            display: block;
-        `;
-        oscWrapper.appendChild(oscCanvas);
+        // 🔥 Создаём таблицу осциллографа
+        oscTableVisible = true;
+        createOscilloscopeTable();
 
-        // Передаём новый canvas в Worker
-        const newOffscreen = oscCanvas.transferControlToOffscreen();
-        scopeWorker.postMessage({
-            type: 'setCanvas',
-            canvas: newOffscreen
-        }, [newOffscreen]);
-
-        console.log('[Main] 📐 Новый canvas создан:', newWidth, 'x', newHeight);
-
-        // 3. Показываем wrapper
+        // Показываем wrapper
         oscWrapper.style.display = 'block';
         oscWrapper.style.visibility = 'visible';
         oscWrapper.style.opacity = '1';
 
-        console.log('[Main] 🔍 Wrapper display после установки:', oscWrapper.style.display);
+        // 🔥 Обновляем размеры canvas после того, как wrapper стал видимым
+        setTimeout(() => {
+            updateGraphCanvasSizes();
+        }, 100);
 
-        // 4. Запускаем опрос
+        // Запускаем опрос
         serialWorker.postMessage({ type: 'start' });
         scopeWorker.postMessage({ type: 'start' });
 
@@ -439,8 +436,8 @@ window.toggleOscilloscopeVisibility = async function(isVisible) {
         scopeWorker.postMessage({ type: 'stop' });
 
         oscWrapper.style.display = 'none';
+        oscTableVisible = false;
 
-        // 🔥 Скрываем панель ввода
         if (inputPanel) {
             inputPanel.classList.add('hidden');
         }
@@ -454,59 +451,228 @@ window.addEventListener('load', function() {
     window.initApplication();
 });
 
-// 🔥 Обработчик resize с debounce
+//  Обработчик resize
 let resizeTimeout = null;
-let isResizing = false;
 
 window.addEventListener('resize', function() {
     if (!oscWrapper || oscWrapper.style.display === 'none') return;
 
-    console.log('[Main] 📐 Resize started');
-    isResizing = true;
-
-    // 🔥 ОСТАНАВЛИВАЕМ рендер во время resize
-    scopeWorker.postMessage({ type: 'stop' });
-
-    // Очищаем предыдущий таймаут
     if (resizeTimeout) clearTimeout(resizeTimeout);
 
-    // Ждём 300ms после окончания resize
     resizeTimeout = setTimeout(() => {
-        console.log('[Main] 📐 Resize finished, пересоздаю canvas');
+        console.log('[Main]  Resize finished');
+        updateGraphCanvasSizes();
+    }, 300);
+});
 
-        // Пересоздаём canvas с новым размером
-        if (oscCanvas) {
-            oscCanvas.remove();
-        }
+//  Создание таблицы осциллографа (2 строки с графиками)
+function createOscilloscopeTable() {
+    const tbody = document.getElementById('oscTableBody');
+    if (!tbody) return;
 
-        const newWidth = Math.floor(window.innerWidth / 2);
-        const newHeight = Math.floor(window.innerHeight);
+    tbody.innerHTML = '';
 
-        oscCanvas = document.createElement('canvas');
-        oscCanvas.id = 'osc-canvas';
-        oscCanvas.width = newWidth;
-        oscCanvas.height = newHeight;
-        oscCanvas.style.cssText = `
+    // Создаём 2 строки для 2 графиков
+    for (let i = 0; i < 2; i++) {
+        const row = document.createElement('tr');
+        row.style.height = '24px';
+
+        // Name (пустой)
+        const nameCell = document.createElement('td');
+        row.appendChild(nameCell);
+
+        // Hex (пустой)
+        const hexCell = document.createElement('td');
+        row.appendChild(hexCell);
+
+        // Physical (пустой)
+        const physCell = document.createElement('td');
+        row.appendChild(physCell);
+
+        // Unit (пустой)
+        const unitCell = document.createElement('td');
+        row.appendChild(unitCell);
+
+        // Graph - canvas в каждой ячейке
+        const graphCell = document.createElement('td');
+        graphCell.className = 'graph-cell';
+
+        const graphCanvas = document.createElement('canvas');
+        graphCanvas.id = `osc-graph-canvas-${i}`;
+        graphCanvas.width = 200;
+        graphCanvas.height = 24;
+        graphCanvas.style.cssText = `
+            display: block;
             width: 100%;
             height: 100%;
-            display: block;
         `;
-        oscWrapper.appendChild(oscCanvas);
+        graphCell.appendChild(graphCanvas);
+        row.appendChild(graphCell);
 
-        // Передаём новый canvas в Worker
-        const newOffscreen = oscCanvas.transferControlToOffscreen();
-        scopeWorker.postMessage({
-            type: 'setCanvas',
-            canvas: newOffscreen
-        }, [newOffscreen]);
+        tbody.appendChild(row);
+    }
 
-        console.log('[Main] 📐 Новый canvas:', newWidth, 'x', newHeight);
+    updateOscTableColumnWidths();
+    initGraphContexts();
+    console.log('[Main] ✅ Таблица осциллографа создана');
+}
 
-        // 🔥 ЗАПУСКАЕМ рендер снова
-        scopeWorker.postMessage({ type: 'start' });
-        isResizing = false;
+// 🔥 Инициализация контекстов
+function initGraphContexts() {
+    graphContexts = [];
+    for (let i = 0; i < 2; i++) {
+        const canvas = document.getElementById(`osc-graph-canvas-${i}`);
+        console.log(`[Main]  Canvas ${i}:`, canvas);
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            graphContexts.push({ canvas, ctx });
+        }
+    }
+    console.log('[Main] ✅ Инициализировано контекстов:', graphContexts.length);
+}
 
-    }, 300); // 300ms debounce
-});
+// 🔥 Обновление размеров canvas
+function updateGraphCanvasSizes() {
+    graphContexts.forEach((graph, index) => {
+        if (!graph || !graph.canvas) return;
+        const cell = graph.canvas.parentElement;
+        if (cell) {
+            console.log(`[Main] 📐 Canvas ${index}: cell.offsetWidth = ${cell.offsetWidth}`);
+            graph.canvas.width = cell.offsetWidth;
+            graph.canvas.height = 24;
+        }
+    });
+}
+
+// 🔥 Обновление ширин колонок
+function updateOscTableColumnWidths() {
+    const table = document.querySelector('#oscTable table');
+    if (!table) return;
+
+    const headers = table.querySelectorAll('thead th');
+    headers.forEach((header, index) => {
+        if (index < oscColumnWeights.length) {
+            header.style.width = (oscColumnWeights[index] * 100) + '%';
+            header.style.position = 'relative';
+
+            // Добавляем ресайзер (кроме последнего столбца)
+            if (index < oscColumnWeights.length - 1) {
+                const oldResizer = header.querySelector('.osc-resizer');
+                if (oldResizer) oldResizer.remove();
+
+                const resizer = document.createElement('div');
+                resizer.className = 'osc-resizer';
+                resizer.dataset.column = index;
+
+                resizer.addEventListener('mousedown', (e) => {
+                    startOscColumnResize(e, index);
+                });
+
+                header.appendChild(resizer);
+            }
+        }
+    });
+}
+
+// 🔥 Ресайз колонок
+let oscResizingColumn = -1;
+let oscStartX = 0;
+let oscStartWeights = [];
+
+function startOscColumnResize(e, columnIndex) {
+    e.preventDefault();
+    e.stopPropagation();
+    oscResizingColumn = columnIndex;
+    oscStartX = e.clientX;
+    oscStartWeights = [...oscColumnWeights];
+
+    const resizer = e.target;
+    resizer.classList.add('dragging');
+
+    document.addEventListener('mousemove', oscColumnResize);
+    document.addEventListener('mouseup', stopOscColumnResize);
+}
+
+function oscColumnResize(e) {
+    if (oscResizingColumn === -1) return;
+
+    const table = document.querySelector('#oscTable table');
+    if (!table) return;
+
+    const deltaX = e.clientX - oscStartX;
+    const totalWidth = table.offsetWidth;
+    const deltaWeight = deltaX / totalWidth;
+
+    const newWeight = Math.max(0.05, oscStartWeights[oscResizingColumn] + deltaWeight);
+    oscColumnWeights[oscResizingColumn] = newWeight;
+
+    if (oscResizingColumn < oscColumnWeights.length - 1) {
+        const nextWeight = Math.max(0.05, oscStartWeights[oscResizingColumn + 1] - deltaWeight);
+        oscColumnWeights[oscResizingColumn + 1] = nextWeight;
+    }
+
+    updateOscTableColumnWidths();
+}
+
+function stopOscColumnResize(e) {
+    if (oscResizingColumn === -1) return;
+
+    const resizer = document.querySelector('.osc-resizer.dragging');
+    if (resizer) {
+        resizer.classList.remove('dragging');
+    }
+
+    document.removeEventListener('mousemove', oscColumnResize);
+    document.removeEventListener('mouseup', stopOscColumnResize);
+    oscResizingColumn = -1;
+}
+
+// 🔥 Отрисовка графиков из данных
+function drawGraphsFromData(allData) {
+    if (!oscTableVisible) return;
+
+    const colors = ['#00ff00', '#ff0000'];
+
+    for (let i = 0; i < Math.min(allData.length, graphContexts.length); i++) {
+        const graph = graphContexts[i];
+        if (!graph || !graph.ctx) continue;
+
+        const ctx = graph.ctx;
+        const canvas = graph.canvas;
+        const width = canvas.width;
+        const height = canvas.height;
+        const data = allData[i] || [];
+
+        // Очищаем
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(0, 0, width, height);
+
+        if (data.length === 0) continue;
+
+        // 🔥 Рисуем последние точки, заполняя всю ширину canvas
+        const pointsToShow = Math.min(data.length, config.maxCapacity);
+        const startIndex = data.length - pointsToShow;
+        const stepX = width / pointsToShow;
+        const centerY = height / 2;
+        const scaleY = (height / 2) / 1100;
+
+        ctx.strokeStyle = colors[i];
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+
+        for (let j = 0; j < pointsToShow; j++) {
+            const x = j * stepX;
+            const dataIndex = startIndex + j;
+            const y = centerY - (data[dataIndex] * scaleY);
+
+            if (j === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        }
+        ctx.stroke();
+    }
+}
 
 console.log('[Main] ✅ main.js загружен');

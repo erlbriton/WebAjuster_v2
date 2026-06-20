@@ -44,22 +44,6 @@
             z-index: 1;
         }
 
-        /* 🔥 КОНТЕЙНЕР ОСЦИЛЛОГРАФА */
-        #osc-container {
-            position: fixed;
-            top: 0;
-            right: 0;
-            width: 800px;
-            height: calc(100vh - 60px);
-            background: #1a1a1a;
-            z-index: 999;
-            display: none;
-        }
-
-        #osc-container.visible {
-            display: block;
-        }
-
         .param-table {
             position: fixed;
             top: 0;
@@ -225,28 +209,27 @@
         }
 
         /* 🔥 Панель ввода (фиксирована внизу) */
-        /* 🔥 Панель ввода (фиксирована внизу) */
-.param-input-panel {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    width: 800px;
-    height: 60px;
-    background: #1a1a1a;
-    border-top: 1px solid #444;
-    border-left: none;
-    border-right: none;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 4px;
-    padding: 6px 12px;
-    box-sizing: border-box;
-    z-index: 1001;
-    transition: transform 0.3s ease, opacity 0.3s ease;
-    transform: translateY(0);
-    opacity: 1;
-}
+        .param-input-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 800px;
+            height: 60px;
+            background: #1a1a1a;
+            border-top: 1px solid #444;
+            border-left: none;
+            border-right: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 4px;
+            padding: 6px 12px;
+            box-sizing: border-box;
+            z-index: 1001;
+            transition: transform 0.3s ease, opacity 0.3s ease;
+            transform: translateY(0);
+            opacity: 1;
+        }
         .param-input-panel.hidden {
             transform: translateY(100%);
             opacity: 0;
@@ -276,7 +259,7 @@
             cursor: not-allowed;
         }
 
-        /* 🔥 Дискретный индикатор (квадратик с 0/1) */
+        /*  Дискретный индикатор (квадратик с 0/1) */
         .discrete-cell {
             width: 30px;
             text-align: center;
@@ -306,15 +289,95 @@
             color: #000;
         }
 
+        /* 🔥 ТАБЛИЦА ОСЦИЛЛОГРАФА */
+        #oscTable {
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+        }
+
+        #oscTable table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: monospace;
+            font-size: 11px;
+            table-layout: fixed;
+        }
+
+        #oscTable thead {
+            position: sticky;
+            top: 0;
+            background: #2a2a2a;
+            z-index: 10;
+        }
+
+        #oscTable thead th {
+            border-right: 1px solid #444;
+            border-bottom: 2px solid #444;
+            padding: 4px;
+            text-align: center;
+            color: #ccc;
+            font-weight: bold;
+            position: relative;
+        }
+
+        #oscTable thead th:last-child {
+            border-right: none;
+        }
+
+        #oscTable tbody tr {
+            height: 24px;
+        }
+
+        #oscTable tbody td {
+            border-right: 1px solid #333;
+            border-bottom: 1px solid #333;
+            padding: 2px 4px;
+            text-align: center;
+            color: #ddd;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            position: relative;
+        }
+
+        #oscTable tbody td.graph-cell {
+            padding: 0;
+            height: 24px;
+        }
+
+        #oscTable tbody td.graph-cell canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: #1a1a1a;
+        }
+
+        /* Ресайзеры */
+        .osc-resizer {
+            position: absolute;
+            right: 0;
+            top: 0;
+            width: 4px;
+            height: 100%;
+            cursor: col-resize;
+            z-index: 10;
+            background: transparent;
+        }
+
+        .osc-resizer:hover {
+            background: rgba(33, 150, 243, 0.4);
+        }
+
+        .osc-resizer.dragging {
+            background: #2196f3;
+        }
     </style>
 </head>
 
 <body>
 
 <div id="ComposeTarget"></div>
-
-<!-- 🔥 КОНТЕЙНЕР ОСЦИЛЛОГРАФА -->
-<!-- <div id="osc-container"></div> -->
 
 <script type="application/javascript" src="composeApp.js"></script>
 
@@ -334,7 +397,7 @@
     </table>
 </div>
 
-<!-- 🔥 Панель ввода (вне таблицы, фиксирована внизу) -->
+<!-- 🔥 Панель ввода -->
 <div class="param-input-panel hidden" id="paramInputPanel">
     <input type="text"
            id="userInputField"
@@ -398,6 +461,23 @@
             Отмена
         </button>
     </div>
+</div>
+
+<!-- 🔥 ТАБЛИЦА ОСЦИЛЛОГРАФА -->
+<div id="oscTable" style="display: none;">
+    <table>
+        <thead>
+        <tr>
+            <th style="width: 15%;">Name</th>
+            <th style="width: 15%;">Hex</th>
+            <th style="width: 20%;">Physical</th>
+            <th style="width: 10%;">Unit</th>
+            <th style="width: 40%;">Graph</th>
+        </tr>
+        </thead>
+        <tbody id="oscTableBody">
+        </tbody>
+    </table>
 </div>
 
 </body>
