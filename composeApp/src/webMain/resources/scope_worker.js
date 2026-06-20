@@ -145,21 +145,27 @@ function drawGraphs() {
     ctx.fillStyle = '#1a1a1a';
     ctx.fillRect(0, 0, width, height);
 
-    // Рисуем первые 2 графика (для примера)
-    const colors = ['#00ff00', '#ff0000', '#0000ff', '#ffff00'];
-    const graphsToDraw = Math.min(2, buffers.length);
+    // 🔥 Высота каждого графика
+    const graphHeight = 20;
+
+    // 🔥 Рисуем 50 графиков
+    const colors = ['#00ff00', '#ff0000', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ff8800', '#88ff00', '#ff0088', '#00ff88', '#8800ff', '#0088ff', '#ff8888', '#88ff88', '#8888ff', '#ffff88', '#ff88ff', '#88ffff', '#ff4444', '#44ff44', '#4444ff', '#ffaa00', '#aa00ff', '#00aaff', '#ff00aa', '#00ffaa', '#aaff00', '#aa0088', '#00aa88', '#8800aa', '#88aa00', '#0088aa', '#aa8800', '#ff6666', '#66ff66', '#6666ff', '#ffff66', '#ff66ff', '#66ffff', '#ff3333', '#33ff33', '#3333ff', '#ffff33', '#ff33ff', '#33ffff', '#ff9999', '#99ff99', '#9999ff', '#ffff99', '#ff99ff'];
+    const graphsToDraw = Math.min(20, buffers.length);
 
     for (let g = 0; g < graphsToDraw; g++) {
         const data = buffers[g].getLinearData();
         if (data.length === 0) continue;
 
-        ctx.strokeStyle = colors[g % colors.length];
+        ctx.strokeStyle = colors[g];
         ctx.lineWidth = 2;
         ctx.beginPath();
 
         const stepX = width / config.maxCapacity;
-        const centerY = height / 2;
-        const scaleY = height / 4 / 1100; // Масштаб
+
+        // 🔥 Позиция Y для каждого графика (сверху вниз)
+        const graphTop = g * graphHeight;           // 0 для первого, 20 для второго
+        const centerY = graphTop + graphHeight / 2; // 10 для первого, 30 для второго
+        const scaleY = (graphHeight / 2) / 1100;    // Масштаб под высоту 20px
 
         for (let i = 0; i < data.length; i++) {
             const x = i * stepX;
