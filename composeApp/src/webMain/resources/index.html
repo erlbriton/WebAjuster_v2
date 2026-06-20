@@ -225,27 +225,28 @@
         }
 
         /* 🔥 Панель ввода (фиксирована внизу) */
-        .param-input-panel {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            width: 800px;
-            height: 60px;
-            background: #f8f9fa;
-            border-top: 2px solid #dee2e6;
-            border-left: 1px solid #ccc;
-            border-right: 1px solid #ccc;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            gap: 4px;
-            padding: 6px 12px;
-            box-sizing: border-box;
-            z-index: 1001;
-            transition: transform 0.3s ease, opacity 0.3s ease;
-            transform: translateY(0);
-            opacity: 1;
-        }
+        /* 🔥 Панель ввода (фиксирована внизу) */
+.param-input-panel {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 800px;
+    height: 60px;
+    background: #1a1a1a;
+    border-top: 1px solid #444;
+    border-left: none;
+    border-right: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    padding: 6px 12px;
+    box-sizing: border-box;
+    z-index: 1001;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+    transform: translateY(0);
+    opacity: 1;
+}
         .param-input-panel.hidden {
             transform: translateY(100%);
             opacity: 0;
@@ -334,7 +335,7 @@
 </div>
 
 <!-- 🔥 Панель ввода (вне таблицы, фиксирована внизу) -->
-<div class="param-input-panel" id="paramInputPanel">
+<div class="param-input-panel hidden" id="paramInputPanel">
     <input type="text"
            id="userInputField"
            class="input-field"

@@ -145,22 +145,6 @@ function drawGraphs() {
     ctx.fillStyle = '#1a1a1a';
     ctx.fillRect(0, 0, width, height);
 
-    // Рисуем сетку
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 1;
-    for (let x = 0; x < width; x += 50) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
-        ctx.stroke();
-    }
-    for (let y = 0; y < height; y += 50) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
-        ctx.stroke();
-    }
-
     // Рисуем первые 2 графика (для примера)
     const colors = ['#00ff00', '#ff0000', '#0000ff', '#ffff00'];
     const graphsToDraw = Math.min(2, buffers.length);

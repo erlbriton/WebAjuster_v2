@@ -73,6 +73,7 @@ window.initApplication = async function() {
 };
 
 // 🔥 ГЛАВНАЯ ФУНКЦИЯ: Создаёт осциллограф ВНЕ Compose
+// 🔥 ГЛАВНАЯ ФУНКЦИЯ: Создаёт осциллограф ВНЕ Compose
 function createOscilloscopeOutsideCompose() {
     // 1. Создаём wrapper (контейнер)
     oscWrapper = document.createElement('div');
@@ -91,10 +92,23 @@ function createOscilloscopeOutsideCompose() {
         overflow: hidden;
     `;
 
-    // 2. Добавляем в document.body
+    // 2. 🔥 Перемещаем панель ввода ВНУТРЬ осциллографа
+    const inputPanel = document.getElementById('paramInputPanel');
+    if (inputPanel) {
+        oscWrapper.appendChild(inputPanel);
+        // Убираем fixed позиционирование, делаем relative внутри wrapper
+        inputPanel.style.position = 'absolute';
+        inputPanel.style.bottom = '0';
+        inputPanel.style.left = '0';
+        inputPanel.style.width = '100%';
+        inputPanel.style.zIndex = '10';
+        console.log('[Main] ✅ Панель ввода перемещена внутрь осциллографа');
+    }
+
+    // 3. Добавляем в document.body
     document.body.appendChild(oscWrapper);
 
-    // 3. Canvas будет создан при первом открытии осциллографа
+    // 4. Canvas будет создан при первом открытии осциллографа
     console.log('[Main] ✅ Wrapper осциллографа создан (canvas будет создан при открытии)');
 }
 
@@ -362,43 +376,22 @@ window.toggleOscilloscopeVisibility = async function(isVisible) {
         return;
     }
 
+    // 🔥 Находим панель ввода СРАЗУ (доступна в обоих блоках)
+    const inputPanel = document.getElementById('paramInputPanel');
+    console.log('[Main] 🔍 Панель ввода найдена:', inputPanel !== null);
+
     if (isVisible) {
         console.log('[Main] 🔍 Открываем осциллограф...');
 
-        // 1. Если порт не открыт — открываем
-        if (!isConnected) {
-            console.log('[Main] 🔌 Порт не подключён, подключаем...');
-            try {
-                const port = await navigator.serial.requestPort();
-                await port.open({ baudRate: config.baudRate });
+        if (inputPanel) {
+            console.log('[Main] 🔍 Убираем класс hidden');
+            inputPanel.classList.remove('hidden');
+            console.log('[Main] 🔍 Классы после удаления:', inputPanel.className);
+        } else {
+            console.error('[Main] ❌ Панель ввода НЕ НАЙДЕНА!');
+        }////////////////////////////////////////////////////////////////
 
-                const readable = port.readable;
-                const writable = port.writable;
-
-                serialWorker.postMessage({
-                    type: 'setStreams',
-                    readable: readable,
-                    writable: writable
-                }, [readable, writable]);
-
-                await new Promise((resolve) => {
-                    const handler = (e) => {
-                        if (e.data.type === 'connected') {
-                            serialWorker.removeEventListener('message', handler);
-                            resolve();
-                        }
-                    };
-                    serialWorker.addEventListener('message', handler);
-                });
-                console.log('[Main] ✅ Порт подключён');
-            } catch (error) {
-                console.error('[Main] ❌ Ошибка подключения:', error.message);
-                alert('Ошибка подключения: ' + error.message);
-                return;
-            }
-        }
-
-        // 2. 🔥 Создаём canvas с актуальным размером
+        // 2. 🔥 Пересоздаём canvas с актуальным размером
         if (oscCanvas) {
             oscCanvas.remove();
         }
@@ -424,14 +417,14 @@ window.toggleOscilloscopeVisibility = async function(isVisible) {
             canvas: newOffscreen
         }, [newOffscreen]);
 
-        console.log('[Main] 📐 Canvas создан:', newWidth, 'x', newHeight);
+        console.log('[Main] 📐 Новый canvas создан:', newWidth, 'x', newHeight);
 
         // 3. Показываем wrapper
         oscWrapper.style.display = 'block';
         oscWrapper.style.visibility = 'visible';
         oscWrapper.style.opacity = '1';
 
-        console.log('[Main] 🔍 Wrapper показан');
+        console.log('[Main] 🔍 Wrapper display после установки:', oscWrapper.style.display);
 
         // 4. Запускаем опрос
         serialWorker.postMessage({ type: 'start' });
@@ -442,11 +435,15 @@ window.toggleOscilloscopeVisibility = async function(isVisible) {
     } else {
         console.log('[Main] 👁️ Закрываем осциллограф...');
 
-        // 🔥 ОСТАНАВЛИВАЕМ рендер ПЕРЕД скрытием
         serialWorker.postMessage({ type: 'stop' });
         scopeWorker.postMessage({ type: 'stop' });
 
         oscWrapper.style.display = 'none';
+
+        // 🔥 Скрываем панель ввода
+        if (inputPanel) {
+            inputPanel.classList.add('hidden');
+        }
 
         console.log('[Main] ✅ Осциллограф закрыт');
     }
