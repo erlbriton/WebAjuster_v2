@@ -2,6 +2,7 @@ package org.example.project.ui.components
 
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.*
@@ -23,6 +24,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -639,9 +641,12 @@ private fun RowScope.EditableCell(
     }
 }
 
-// Драггер — прозрачная зона справа от ячейки, перехватывает горизонтальный drag
+// 🔥 Драггер с видимым индикатором и ресайзом при отпускании
 @Composable
-private fun BoxScope.VerticalResizer(onDrag: (Float) -> Unit) {
+private fun BoxScope.VerticalResizer(onDragEnd: (Float) -> Unit) {
+    var dragOffset by remember { mutableStateOf(0f) }
+    var isDragging by remember { mutableStateOf(false) }
+
     Box(
         modifier = Modifier
             .fillMaxHeight()
@@ -649,9 +654,41 @@ private fun BoxScope.VerticalResizer(onDrag: (Float) -> Unit) {
             .align(Alignment.CenterEnd)
             .zIndex(1f)
             .pointerHoverIcon(PointerIcon.Hand)
-            .draggable(
-                state       = rememberDraggableState { delta -> onDrag(delta) },
-                orientation = Orientation.Horizontal
+            .background(if (isDragging) Color(0xFF2196F3).copy(alpha = 0.3f) else Color.Transparent)
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = {
+                        isDragging = true
+                        dragOffset = 0f
+                    },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        dragOffset += dragAmount.x
+                    },
+                    onDragEnd = {
+                        isDragging = false
+                        if (dragOffset != 0f) {
+                            onDragEnd(dragOffset)
+                        }
+                        dragOffset = 0f
+                    },
+                    onDragCancel = {
+                        isDragging = false
+                        dragOffset = 0f
+                    }
+                )
+            }
+    ) {
+        // 🔥 Отдельный Box для синей линии-индикатора
+        if (isDragging) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(2.dp)
+                    .graphicsLayer { translationX = dragOffset }
+                    .background(Color(0xFF2196F3))
+                    .zIndex(2f)
             )
-    )
+        }
+    }
 }
