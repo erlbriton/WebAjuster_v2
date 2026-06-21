@@ -108,7 +108,7 @@ function clearBuffers() {
     for (let buf of buffers) {
         buf.clear();
     }
-    console.log('[ScopeWorker] 🧹 Буферы очищены');
+    //console.log('[ScopeWorker] 🧹 Буферы очищены');
 }
 
 // === ЦИКЛ РЕНДЕРА ===
@@ -135,7 +135,7 @@ function drawGraphs() {
     for (let i = 0; i < Math.min(2, buffers.length); i++) {
         const data = buffers[i].getLinearData();
         graphData.push(data);
-        console.log(`[ScopeWorker] 📊 Буфер ${i}: длина = ${data.length}`);
+        //console.log(`[ScopeWorker] 📊 Буфер ${i}: длина = ${data.length}`);
     }
 
     self.postMessage({
@@ -143,7 +143,7 @@ function drawGraphs() {
         data: graphData
     });
 
-    console.log('[ScopeWorker]  Данные отправлены в main thread');
+    //console.log('[ScopeWorker]  Данные отправлены в main thread');
 }
 
 console.log('[ScopeWorker] ✅ Worker загружен');

@@ -6,6 +6,7 @@ let scopeWorker = null;
 let messageChannel = null;
 let isInitialized = false;
 let isConnected = false;
+let lastGraphData = null;
 
 // 🔥 Глобальные переменные для осциллографа
 let oscWrapper = null;
@@ -22,7 +23,7 @@ const config = {
 };
 
 window.initApplication = async function() {
-    console.log('[Main]  Инициализация приложения...');
+    console.log('[Main] 🚀 Инициализация приложения...');
 
     try {
         messageChannel = new MessageChannel();
@@ -69,7 +70,7 @@ window.initApplication = async function() {
         console.log('[Main] ✅ Приложение инициализировано');
 
     } catch (error) {
-        console.error('[Main]  Ошибка инициализации:', error.message);
+        console.error('[Main] ❌ Ошибка инициализации:', error.message);
         alert('Ошибка инициализации: ' + error.message);
     }
 };
@@ -130,11 +131,11 @@ function handleSerialWorkerMessage(event) {
             isConnected = true;
             break;
         case 'disconnected':
-            console.log('[Main]  Порт отключён');
+            console.log('[Main] 🔌 Порт отключён');
             isConnected = false;
             break;
         case 'started':
-            console.log('[Main]  Опрос запущен');
+            console.log('[Main] 📡 Опрос запущен');
             break;
         case 'stopped':
             console.log('[Main] ⏹️ Опрос остановлен');
@@ -164,7 +165,6 @@ function handleScopeWorkerMessage(event) {
             console.log('[Main] Scope Worker инициализирован');
             break;
         case 'graphData':
-            console.log('[Main] 📊 Получены данные графиков:', msg.data.length, 'буферов');
             drawGraphsFromData(msg.data);
             break;
         case 'error':
@@ -237,7 +237,7 @@ window.readDeviceId = async function() {
 
     try {
         if (!isConnected) {
-            console.log('[Main]  Порт не подключён, подключаем...');
+            console.log('[Main] 🔌 Порт не подключён, подключаем...');
             const port = await navigator.serial.requestPort();
             await port.open({ baudRate: config.baudRate });
 
@@ -358,7 +358,7 @@ function handleTransceiveResponse(data) {
 }
 
 function handleTransceiveError(error) {
-    console.error('[Main]  Ошибка:', error);
+    console.error('[Main] ❌ Ошибка:', error);
 }
 
 function calculateCRC16(data) {
@@ -451,7 +451,7 @@ window.addEventListener('load', function() {
     window.initApplication();
 });
 
-//  Обработчик resize
+// 🔥 Обработчик resize
 let resizeTimeout = null;
 
 window.addEventListener('resize', function() {
@@ -460,51 +460,44 @@ window.addEventListener('resize', function() {
     if (resizeTimeout) clearTimeout(resizeTimeout);
 
     resizeTimeout = setTimeout(() => {
-        console.log('[Main]  Resize finished');
+        console.log('[Main] 📐 Resize finished');
         updateGraphCanvasSizes();
     }, 300);
 });
 
-//  Создание таблицы осциллографа (2 строки с графиками)
+// 🔥 Создание таблицы осциллографа (2 строки с графиками)
 function createOscilloscopeTable() {
     const tbody = document.getElementById('oscTableBody');
     if (!tbody) return;
 
     tbody.innerHTML = '';
 
-    // Создаём 2 строки для 2 графиков
     for (let i = 0; i < 2; i++) {
         const row = document.createElement('tr');
         row.style.height = '24px';
 
-        // Name (пустой)
         const nameCell = document.createElement('td');
         row.appendChild(nameCell);
 
-        // Hex (пустой)
         const hexCell = document.createElement('td');
         row.appendChild(hexCell);
 
-        // Physical (пустой)
         const physCell = document.createElement('td');
         row.appendChild(physCell);
 
-        // Unit (пустой)
         const unitCell = document.createElement('td');
         row.appendChild(unitCell);
 
-        // Graph - canvas в каждой ячейке
         const graphCell = document.createElement('td');
         graphCell.className = 'graph-cell';
+        graphCell.style.position = 'relative';
+        graphCell.style.padding = '0';
 
         const graphCanvas = document.createElement('canvas');
         graphCanvas.id = `osc-graph-canvas-${i}`;
-        graphCanvas.width = 200;
-        graphCanvas.height = 24;
+        // 🔥 УБРАЛИ CSS width/height - только внутренний размер!
         graphCanvas.style.cssText = `
             display: block;
-            width: 100%;
-            height: 100%;
         `;
         graphCell.appendChild(graphCanvas);
         row.appendChild(graphCell);
@@ -514,6 +507,11 @@ function createOscilloscopeTable() {
 
     updateOscTableColumnWidths();
     initGraphContexts();
+
+    setTimeout(() => {
+        updateGraphCanvasSizes();
+    }, 50);
+
     console.log('[Main] ✅ Таблица осциллографа создана');
 }
 
@@ -522,7 +520,7 @@ function initGraphContexts() {
     graphContexts = [];
     for (let i = 0; i < 2; i++) {
         const canvas = document.getElementById(`osc-graph-canvas-${i}`);
-        console.log(`[Main]  Canvas ${i}:`, canvas);
+        console.log(`[Main] 🔍 Canvas ${i}:`, canvas);
         if (canvas) {
             const ctx = canvas.getContext('2d');
             graphContexts.push({ canvas, ctx });
@@ -533,15 +531,27 @@ function initGraphContexts() {
 
 // 🔥 Обновление размеров canvas
 function updateGraphCanvasSizes() {
+    let sizeChanged = false;
+
     graphContexts.forEach((graph, index) => {
         if (!graph || !graph.canvas) return;
         const cell = graph.canvas.parentElement;
         if (cell) {
-            console.log(`[Main] 📐 Canvas ${index}: cell.offsetWidth = ${cell.offsetWidth}`);
-            graph.canvas.width = cell.offsetWidth;
-            graph.canvas.height = 24;
+            const newWidth = cell.offsetWidth;
+            const newHeight = 24;
+
+            if (graph.canvas.width !== newWidth || graph.canvas.height !== newHeight) {
+                graph.canvas.width = newWidth;
+                graph.canvas.height = newHeight;
+                sizeChanged = true;
+            }
         }
     });
+
+    // 🔥 Если размер изменился - сразу перерисовываем из сохранённых данных
+    if (sizeChanged && lastGraphData) {
+        drawGraphsFromData(lastGraphData);
+    }
 }
 
 // 🔥 Обновление ширин колонок
@@ -612,6 +622,9 @@ function oscColumnResize(e) {
     }
 
     updateOscTableColumnWidths();
+
+    // 🔥 Обновляем размеры canvas при ресайзе
+    updateGraphCanvasSizes();
 }
 
 function stopOscColumnResize(e) {
@@ -631,6 +644,9 @@ function stopOscColumnResize(e) {
 function drawGraphsFromData(allData) {
     if (!oscTableVisible) return;
 
+    // 🔥 Сохраняем данные для перерисовки при ресайзе
+    lastGraphData = allData;
+
     const colors = ['#00ff00', '#ff0000'];
 
     for (let i = 0; i < Math.min(allData.length, graphContexts.length); i++) {
@@ -643,16 +659,17 @@ function drawGraphsFromData(allData) {
         const height = canvas.height;
         const data = allData[i] || [];
 
-        // Очищаем
         ctx.fillStyle = '#1a1a1a';
         ctx.fillRect(0, 0, width, height);
 
         if (data.length === 0) continue;
 
-        // 🔥 Рисуем последние точки, заполняя всю ширину canvas
-        const pointsToShow = Math.min(data.length, config.maxCapacity);
+        const pixelsPerPoint = 1;
+        const maxPoints = Math.floor(width / pixelsPerPoint);
+        const pointsToShow = Math.min(data.length, maxPoints);
         const startIndex = data.length - pointsToShow;
-        const stepX = width / pointsToShow;
+
+        const stepX = pixelsPerPoint;
         const centerY = height / 2;
         const scaleY = (height / 2) / 1100;
 
@@ -661,8 +678,8 @@ function drawGraphsFromData(allData) {
         ctx.beginPath();
 
         for (let j = 0; j < pointsToShow; j++) {
-            const x = j * stepX;
             const dataIndex = startIndex + j;
+            const x = j * stepX;
             const y = centerY - (data[dataIndex] * scaleY);
 
             if (j === 0) {
