@@ -1,3 +1,5 @@
+//table_manager.js
+
 const TableManager = {
     DEFAULT_HEIGHT: 20,
     params: [],

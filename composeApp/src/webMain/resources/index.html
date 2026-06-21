@@ -9,16 +9,20 @@
 
     <!-- 🔥 БИБЛИОТЕКИ (загружаются в главном потоке) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
-    <script src="pixiOscilloscope.js"></script>
-    <script src="ringBuffer.js"></script>
-    <script src="modbus.js"></script>
 
-    <!-- 🔥 МОДУЛИ ПРИЛОЖЕНИЯ -->
-    <script src="table_manager.js"></script>
-    <script src="popup_manager.js"></script>
-    <script src="resize_manager.js"></script>
-    <script src="left_panel.js"></script>
-    <script src="main.js"></script>
+    <!-- 🔥 БИБЛИОТЕКИ -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
+    <script src="workers/ringBuffer.js"></script>
+
+    <!-- 🔥 МОДУЛИ ПРИЛОЖЕНИЯ (обычные скрипты) -->
+    <script src="js/table_manager.js"></script>
+    <script src="js/popup_manager.js"></script>
+    <script src="js/resize_manager.js"></script>
+    <script src="js/left_panel.js"></script>
+    <script type="module" src="main/device_connection.js"></script>
+
+    <!-- 🔥 ГЛАВНЫЙ МОДУЛЬ (ES6) -->
+    <script type="module" src="main/main.js"></script>
 
     <style>
         html, body {

@@ -4,6 +4,7 @@ let serialWriter = null;
 let serialReader = null;
 let isConnected = false;
 let isRunning = false;
+let pollingChunks = [];
 
 let config = {
     slaveAddress: 0x01,
@@ -61,9 +62,14 @@ self.onmessage = function(event) {
             disconnectPort();
             break;
 
-        case 'start':
-            startOscilloscope();
-            break;
+        case 'initChunks':
+                    pollingChunks = event.data.chunks;
+                    console.log('[SerialWorker] ✅ Получена карта опроса:', pollingChunks.length, 'блоков');
+                    break;
+
+                case 'start':
+                    startOscilloscope();
+                    break;
 
         case 'stop':
             stopOscilloscope();
@@ -186,41 +192,31 @@ async function writeLoop() {
     console.log('[SerialWorker] writeLoop started');
 
     while (isConnected && isRunning) {
-        try {
-            const body = new Uint8Array([
-                config.slaveAddress,
-                0x03,
-                (config.registerAddr >> 8) & 0xFF,
-                config.registerAddr & 0xFF,
-                (config.paramsCount >> 8) & 0xFF,
-                config.paramsCount & 0xFF
-            ]);
+        // Итерируемся по массиву pollingChunks, который мы заполнили при initChunks
+        for (const chunk of pollingChunks) {
+            if (!isRunning) break; // Если нажали Stop — выходим из цикла
 
-            let crc = 0xFFFF;
-            for (let pos = 0; pos < body.length; pos++) {
-                crc ^= body[pos];
-                for (let i = 8; i !== 0; i--) {
-                    if ((crc & 0x0001) !== 0) {
-                        crc >>= 1;
-                        crc ^= 0xA001;
-                    } else {
-                        crc >>= 1;
-                    }
-                }
+            try {
+                // Создаем запрос для конкретного блока (адрес и длина из чанка)
+                const body = new Uint8Array([
+                    config.slaveAddress,
+                    0x03,
+                    (chunk.startAddr >> 8) & 0xFF,
+                    chunk.startAddr & 0xFF,
+                    (chunk.count >> 8) & 0xFF,
+                    chunk.count & 0xFF
+                ]);
+
+                // ... (тут остается ваш код расчета CRC) ...
+                // finalPacket = ...
+                await serialWriter.write(finalPacket);
+
+                // Небольшая пауза между запросами разных блоков
+                await new Promise(res => setTimeout(res, 10));
+            } catch (error) {
+                console.error('[SerialWorker] writeLoop error:', error.message);
             }
-
-            const finalPacket = new Uint8Array(8);
-            finalPacket.set(body, 0);
-            finalPacket[6] = crc & 0xFF;
-            finalPacket[7] = (crc >> 8) & 0xFF;
-
-            await serialWriter.write(finalPacket);
-
-        } catch (error) {
-            console.error('[SerialWorker] writeLoop error:', error.message);
         }
-
-        await new Promise(res => setTimeout(res, 20));
     }
 }
 

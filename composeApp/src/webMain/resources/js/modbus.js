@@ -5,7 +5,6 @@ class ModbusParser {
         // Внутренний буфер накопления приходящих байт
         this.buffer = new Uint8Array(0);
     }
-
     /**
      * Метод принимает порцию сырых байт от COM-порта и добавляет их в конец буфера накопления
      * @param {Uint8Array} chunk - Новые байты из порта
@@ -19,7 +18,6 @@ class ModbusParser {
         newBuffer.set(chunk, this.buffer.length);
         this.buffer = newBuffer;
     }
-
     /**
      * Ищет и извлекает один валидный пакет Modbus RTU из накопленного буфера.
      * Мы парсим стандартную функцию 03 (Read Holding Registers) или 04 (Read Input Registers).
@@ -41,7 +39,6 @@ class ModbusParser {
                 if (this.buffer.length < fullPacketLength) {
                     return null;
                 }
-
                 // Вырезаем пакет для проверки контрольной суммы CRC16
                 const packet = this.buffer.subarray(0, fullPacketLength);
                 
@@ -58,7 +55,6 @@ class ModbusParser {
 
                     // Очищаем буфер от обработанного пакета
                     this.buffer = this.buffer.subarray(fullPacketLength);
-                    
                     // Возвращаем оба значения в виде массива для main.js
                     return [adcValue1, adcValue2];
                 } else {
@@ -73,7 +69,6 @@ class ModbusParser {
 
         return null;
     }
-
     /**
      * Стандартный алгоритм подсчета контрольной суммы Modbus CRC16
      */

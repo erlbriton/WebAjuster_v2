@@ -7,6 +7,7 @@ let canvas = null;
 let ctx = null;
 let buffers = [];
 let isRunning = false;
+let paramMapping = []; // Добавлено для хранения структуры параметров
 
 // Конфигурация
 let config = {
@@ -28,6 +29,13 @@ self.onmessage = function(event) {
             config = { ...config, ...msg.config };
             initBuffers();
             self.postMessage({ type: 'initialized' });
+            break;
+
+        case 'initParams': // Новый кейс для динамической настройки
+            paramMapping = msg.params;
+            config.paramsCount = paramMapping.length;
+            initBuffers();
+            console.log('[ScopeWorker] ✅ Параметры обновлены, размер:', config.paramsCount);
             break;
 
         case 'setSerialPort':
@@ -108,7 +116,6 @@ function clearBuffers() {
     for (let buf of buffers) {
         buf.clear();
     }
-    //console.log('[ScopeWorker] 🧹 Буферы очищены');
 }
 
 // === ЦИКЛ РЕНДЕРА ===
@@ -132,18 +139,17 @@ function renderLoop(timestamp) {
 // === ОТПРАВКА ДАННЫХ В MAIN THREAD ===
 function drawGraphs() {
     const graphData = [];
-    for (let i = 0; i < Math.min(2, buffers.length); i++) {
+    // Изменено: берем все доступные буферы (или хотя бы первые 10, если их очень много)
+    const limit = Math.min(10, buffers.length);
+    for (let i = 0; i < limit; i++) {
         const data = buffers[i].getLinearData();
         graphData.push(data);
-        //console.log(`[ScopeWorker] 📊 Буфер ${i}: длина = ${data.length}`);
     }
 
     self.postMessage({
         type: 'graphData',
         data: graphData
     });
-
-    //console.log('[ScopeWorker]  Данные отправлены в main thread');
 }
 
 console.log('[ScopeWorker] ✅ Worker загружен');
