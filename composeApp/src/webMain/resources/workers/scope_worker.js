@@ -7,6 +7,7 @@ let canvas = null;
 let ctx = null;
 let buffers = [];
 let isRunning = false;
+let paramMapping = []; // Добавлено для хранения структуры параметров
 
 // Конфигурация
 let config = {
@@ -30,8 +31,14 @@ self.onmessage = function(event) {
             self.postMessage({ type: 'initialized' });
             break;
 
+        case 'initParams': // Новый кейс для динамической настройки
+            paramMapping = msg.params;
+            config.paramsCount = paramMapping.length;
+            initBuffers();
+            console.log('[ScopeWorker] ✅ Параметры обновлены, размер:', config.paramsCount);
+            break;
+
         case 'setSerialPort':
-            // Получаем порт от Serial Worker
             serialPort = msg.port;
             serialPort.onmessage = function(e) {
                 handleSerialData(e.data);
@@ -41,7 +48,6 @@ self.onmessage = function(event) {
             break;
 
         case 'setCanvas':
-            // Получаем новый OffscreenCanvas (рендер НЕ останавливаем!)
             canvas = msg.canvas;
             ctx = canvas.getContext('2d');
             console.log('[ScopeWorker] ✅ Новый canvas получен, размер:', canvas.width, 'x', canvas.height);
@@ -59,14 +65,13 @@ self.onmessage = function(event) {
             clearBuffers();
             break;
 
-            case 'resize':
-                if (canvas) {
-                    // 🔥 Важно: меняем размер OffscreenCanvas изнутри Worker'а
-                    canvas.width = msg.width;
-                    canvas.height = msg.height;
-                    console.log('[ScopeWorker] 📐 OffscreenCanvas resized:', msg.width, 'x', msg.height);
-                }
-                break;
+        case 'resize':
+            if (canvas) {
+                canvas.width = msg.width;
+                canvas.height = msg.height;
+                console.log('[ScopeWorker] 📐 OffscreenCanvas resized:', msg.width, 'x', msg.height);
+            }
+            break;
     }
 };
 
@@ -85,7 +90,6 @@ function handleSerialData(data) {
 
     const values = data.values;
 
-    // Распределяем значения по буферам
     for (let i = 0; i < Math.min(values.length, config.paramsCount); i++) {
         buffers[i].push(values[i]);
     }
@@ -98,7 +102,6 @@ function startRendering() {
     isRunning = true;
     console.log('[ScopeWorker]  Рендер запущен');
 
-    // Запускаем renderLoop
     requestAnimationFrame(renderLoop);
 }
 
@@ -113,83 +116,40 @@ function clearBuffers() {
     for (let buf of buffers) {
         buf.clear();
     }
-    console.log('[ScopeWorker] 🧹 Буферы очищены');
 }
 
-// === ЦИКЛ РЕНДЕРА (Canvas 2D) ===
+// === ЦИКЛ РЕНДЕРА ===
 let lastRenderTime = 0;
 function renderLoop(timestamp) {
     if (!isRunning) return;
 
-    // Ограничиваем FPS до 60
     if (timestamp - lastRenderTime < 16.67) {
         requestAnimationFrame(renderLoop);
         return;
     }
     lastRenderTime = timestamp;
 
-    // Рисуем графики
-    if (ctx && buffers.length > 0) {
+    if (buffers.length > 0) {
         drawGraphs();
     }
 
     requestAnimationFrame(renderLoop);
 }
 
-// === ОТРИСОВКА ГРАФИКОВ ===
+// === ОТПРАВКА ДАННЫХ В MAIN THREAD ===
 function drawGraphs() {
-    const width = canvas.width;
-    const height = canvas.height;
-
-    // Очищаем canvas
-    ctx.fillStyle = '#1a1a1a';
-    ctx.fillRect(0, 0, width, height);
-
-    // Рисуем сетку
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 1;
-    for (let x = 0; x < width; x += 50) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
-        ctx.stroke();
-    }
-    for (let y = 0; y < height; y += 50) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
-        ctx.stroke();
+    const graphData = [];
+    // Изменено: берем все доступные буферы (или хотя бы первые 10, если их очень много)
+    const limit = Math.min(10, buffers.length);
+    for (let i = 0; i < limit; i++) {
+        const data = buffers[i].getLinearData();
+        graphData.push(data);
     }
 
-    // Рисуем первые 2 графика (для примера)
-    const colors = ['#00ff00', '#ff0000', '#0000ff', '#ffff00'];
-    const graphsToDraw = Math.min(2, buffers.length);
-
-    for (let g = 0; g < graphsToDraw; g++) {
-        const data = buffers[g].getLinearData();
-        if (data.length === 0) continue;
-
-        ctx.strokeStyle = colors[g % colors.length];
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-
-        const stepX = width / config.maxCapacity;
-        const centerY = height / 2;
-        const scaleY = height / 4 / 1100; // Масштаб
-
-        for (let i = 0; i < data.length; i++) {
-            const x = i * stepX;
-            const y = centerY - (data[i] * scaleY);
-
-            if (i === 0) {
-                ctx.moveTo(x, y);
-            } else {
-                ctx.lineTo(x, y);
-            }
-        }
-
-        ctx.stroke();
-    }
+    self.postMessage({
+        type: 'graphData',
+        data: graphData
+    });
 }
 
 console.log('[ScopeWorker] ✅ Worker загружен');
