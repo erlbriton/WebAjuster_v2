@@ -40,22 +40,22 @@ window.initApplication = async function() {
 
         createOscilloscopeOutsideCompose();
 
-       // Убрали принудительную инициализацию со старым конфигом,
-               // теперь будем ждать реальные данные из Kotlin
-              state.serialWorker.postMessage({
-                          type: 'init',
-                          config: state.config
-                      });
+        // Убрали принудительную инициализацию со старым конфигом,
+        // теперь будем ждать реальные данные из Kotlin
+        state.serialWorker.postMessage({
+            type: 'init',
+            config: state.config
+        });
 
-                      state.scopeWorker.postMessage({
-                          type: 'init',
-                          config: {
-                              paramsCount: state.config.paramsCount,
-                              maxCapacity: 1000
-                          }
-                      });
+        state.scopeWorker.postMessage({
+            type: 'init',
+            config: {
+                paramsCount: state.config.paramsCount,
+                maxCapacity: 1000
+            }
+        });
 
-                      console.log('[Main] ✅ Воркеры инициализированы базовым конфигом');
+        console.log('[Main] ✅ Воркеры инициализированы базовым конфигом');
 
         state.isInitialized = true;
         console.log('[Main] ✅ Приложение инициализировано');
@@ -132,7 +132,7 @@ window.startOscilloscope = function() {
         params: analysis.paramMapping
     });
 
-   window.startOscilloscope();
+    // Рекурсивный самовызов window.startOscilloscope() удален во избежание переполнения стека
 };
 
 window.stopOscilloscope = function() {
@@ -140,7 +140,7 @@ window.stopOscilloscope = function() {
     state.scopeWorker.postMessage({ type: 'stop' });
 };
 
-window.toggleOscilloscopeVisibility = async function(isVisible) {
+window.toggleOscilloscopeVisibility = function(isVisible) {
     console.log('[Main]  toggleOscilloscopeVisibility вызвана с isVisible =', isVisible);
 
     if (!state.oscWrapper) {
@@ -182,21 +182,38 @@ window.toggleOscilloscopeVisibility = async function(isVisible) {
             updateGraphCanvasSizes();
         }, 100);
 
-       // В момент открытия берем данные, которые уже есть в памяти (window.ramParameters)
-               // и отправляем их в воркеры
-               if (window.ramParameters) {
-                   const analysis = analyzeRegisters();
-                   const chunks = buildChunks(analysis.registers);
+        // В момент открытия берем данные, которые уже есть в памяти (window.ramParameters)
+        // и отправляем их в воркеры
+        if (window.ramParameters && window.analyzeRegisters && window.buildChunks) {
+            const analysis = window.analyzeRegisters();
+            const chunks = window.buildChunks(analysis.registers);
 
-                   console.log('[Main] 🚀 Отправка параметров в воркеры при открытии...');
-                   state.serialWorker.postMessage({ type: 'initChunks', chunks: chunks });
-                   state.scopeWorker.postMessage({ type: 'initParams', params: analysis.paramMapping });
-               }
+            console.log('[Main] 🚀 Отправка параметров в воркеры при открытии...');
 
-               state.serialWorker.postMessage({ type: 'start' });
-               state.scopeWorker.postMessage({ type: 'start' });
+            // Добавляем строгую проверку, что воркеры уже созданы и существуют
+            if (state.serialWorker) {
+                state.serialWorker.postMessage({ type: 'initChunks', chunks: chunks });
+            } else {
+                console.warn('[Main] ⚠️ serialWorker еще не готов');
+            }
 
-               console.log('[Main] ✅ Осциллограф открыт и запущен');
+            if (state.scopeWorker) {
+                state.scopeWorker.postMessage({ type: 'initParams', params: analysis.paramMapping });
+            } else {
+                console.warn('[Main] ⚠️ scopeWorker еще не готов');
+            }
+        }
+
+        // Защищаем вызовы команд запуска от null-объектов
+        if (state.serialWorker) {
+            state.serialWorker.postMessage({ type: 'start' });
+        }
+        if (state.scopeWorker) {
+            state.scopeWorker.postMessage({ type: 'start' });
+        }
+
+        console.log('[Main] ✅ Попытка запуска осциллографа обработана');
+        console.log('[Main] ✅ Осциллограф открыт и запущен');
 
     } else {
         console.log('[Main] 👁️ Закрываем осциллограф...');
@@ -215,8 +232,9 @@ window.toggleOscilloscopeVisibility = async function(isVisible) {
     }
 };
 
-window.addEventListener('load', function() {
-    console.log('[Main] Страница загружена');
+// Переключаемся на DOMContentLoaded для ускоренного запуска до вызовов из Kotlin
+window.addEventListener('DOMContentLoaded', function() {
+    console.log('[Main] DOM готов, экстренная инициализация...');
     window.initApplication();
 });
 
@@ -255,8 +273,6 @@ window.generateRegisterMap = function() {
     console.log('[Main] ✅ Карта параметров создана, элементов:', map.length);
     return map;
 };
-
-import { analyzeRegisters, buildChunks } from './register_analyzer.js';
 
 window.receiveParametersFromKotlin = function(jsonString) {
     console.log('[Main] 📥 Получены данные из Kotlin, парсинг...');

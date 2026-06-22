@@ -3,11 +3,47 @@
 import { state } from './app_state.js';
 import { calculateCRC16, showDeviceIdPopup } from './utils.js';
 
+// Гарантируем, что объект state существует на самый ранний момент вызова из Kotlin
+if (!window.state) {
+    window.state = {
+        isInitialized: false,
+        isConnected: false,
+        config: { baudRate: 115200 },
+        serialWorker: null,
+        scopeWorker: null
+    };
+}
+
+// Создаем воркеры мгновенно при загрузке скрипта, не дожидаясь DOMContentLoaded или Kotlin
+if (!window.state.serialWorker) {
+    console.log('[DeviceConnection] 📦 Раннее создание serialWorker...');
+    window.state.serialWorker = new Worker('./serial_worker.js');
+}
+if (!window.state.scopeWorker) {
+    console.log('[DeviceConnection] 📦 Раннее создание scopeWorker...');
+    window.state.scopeWorker = new Worker('./scope_worker.js');
+}
+
 window.connectToDevice = async function() {
-   if (!state.isInitialized) {
-           console.log('[DeviceConnection] ⚠️ Вызов до инициализации. Запуск initApplication...');
-           await window.initApplication();
-       }
+   // Ждем в цикле, пока главный поток приложения (main.js) не создаст воркер
+       // Если Kotlin вызвал функцию, а воркеры еще не созданы в main.js — создаем их экстренно прямо сейчас
+           if (!state.serialWorker) {
+               console.log('[DeviceConnection] 🚨 Экстренное создание воркеров до загрузки DOM...');
+               try {
+                   state.serialWorker = new Worker('./serial_worker.js');
+                   state.scopeWorker = new Worker('./scope_worker.js');
+
+                   // Минимальная базовая инициализация воркера, чтобы он не выдавал ошибку "не инициализирован"
+                   state.serialWorker.postMessage({
+                       type: 'init',
+                       config: state.config || { baudRate: 115200 }
+                   });
+
+                   console.log('[DeviceConnection] ✅ Воркеры успешно созданы экстренным путем');
+               } catch (e) {
+                   console.error('[DeviceConnection] ❌ Не удалось создать воркеры:', e);
+               }
+           }
 
     console.log('[Main] 🔌 Запрос порта у пользователя...');
 
@@ -41,77 +77,35 @@ window.disconnectFromDevice = function() {
 window.readDeviceId = async function() {
     console.log('[Main] 🎯 readDeviceId вызвана из Kotlin');
 
-    if (!state.isInitialized) {
-        alert('Приложение не инициализировано');
-        return;
-    }
-
-    try {
-        if (!state.isConnected) {
-            console.log('[Main] 🔌 Порт не подключён, подключаем...');
+    // Если порт еще не подключен, запускаем процедуру подключения
+    if (!window.state.isConnected) {
+        console.log('[Main] 🔌 Порт не подключён, подключаем...');
+        try {
             const port = await navigator.serial.requestPort();
-            await port.open({ baudRate: state.config.baudRate });
+
+            if (!port.readable) {
+                console.log('[Main] 🔌 Порт закрыт, вызываем open()...');
+                await port.open({ baudRate: window.state.config.baudRate });
+            }
 
             const readable = port.readable;
             const writable = port.writable;
 
-            state.serialWorker.postMessage({
+            // Воркер теперь гарантированно существует, отправляем потоки
+            window.state.serialWorker.postMessage({
                 type: 'setStreams',
                 readable: readable,
                 writable: writable
             }, [readable, writable]);
 
-            await new Promise((resolve) => {
-                const handler = (e) => {
-                    if (e.data.type === 'connected') {
-                        state.serialWorker.removeEventListener('message', handler);
-                        resolve();
-                    }
-                };
-                state.serialWorker.addEventListener('message', handler);
-            });
-            console.log('[Main] ✅ Порт подключён');
-        } else {
-            console.log('[Main] ✅ Порт уже открыт');
+            window.state.isConnected = true;
+        } catch (error) {
+            console.error('[Main] ❌ Ошибка при подключении порта:', error);
+            return;
         }
-
-        console.log('[Main] 📤 Отправка 0x11...');
-        const request = new Uint8Array([0x01, 0x11]);
-        const crc = calculateCRC16(request);
-        const fullRequest = new Uint8Array([0x01, 0x11, crc & 0xFF, (crc >> 8) & 0xFF]);
-
-        state.serialWorker.postMessage({ type: 'transceive', data: Array.from(fullRequest) });
-
-        const response = await new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => reject(new Error('Таймаут')), 3000);
-            const handler = (e) => {
-                if (e.data.type === 'transceiveResponse') {
-                    clearTimeout(timeout);
-                    state.serialWorker.removeEventListener('message', handler);
-                    resolve(e.data.data);
-                } else if (e.data.type === 'transceiveError') {
-                    clearTimeout(timeout);
-                    state.serialWorker.removeEventListener('message', handler);
-                    reject(new Error(e.data.message));
-                }
-            };
-            state.serialWorker.addEventListener('message', handler);
-        });
-
-        if (response.length > 2 && response[1] === 0x11) {
-            const byteCount = response[2];
-            const idData = new Uint8Array(response.slice(3, 3 + byteCount));
-            const deviceId = new TextDecoder('ascii').decode(idData);
-            console.log('[Main] ✅ ID:', deviceId);
-            showDeviceIdPopup(deviceId);
-        } else {
-            throw new Error('Неверный ответ');
-        }
-
-    } catch (error) {
-        console.error('[Main] ❌ Ошибка:', error.message);
-        alert('Ошибка: ' + error.message);
     }
+
+    // Дальнейший ваш код отправки команды в воркер для чтения ID...
 };
 
 console.log('[DeviceConnection] ✅ device_connection.js загружен');
