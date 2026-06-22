@@ -74,35 +74,28 @@ fun DataTable(modifier: Modifier = Modifier) {
             }
     ) {
 
-        // ВНУТРЕННИЙ Box, где мы используем BoxWithConstraints вместо onGloballyPositioned.
-        // Это железно защищает от бесконечных циклов изменения размеров!
+        // ВНУТРЕННИЙ Box
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val totalWidthPx = constraints.maxWidth.toFloat()
 
-            // Вычисляем X-позиции вертикальных линий БЕЗ использования side-эффектов стейта
-            val lineXPositions = remember(weights.toList(), totalWidthPx) {
-                val total = weights.sum()
-                val positions = mutableListOf<Float>()
-                var acc = 0f
-                for (i in 0 until weights.size - 1) {
-                    acc += weights[i] / total
-                    positions.add(acc * totalWidthPx)
-                }
-                positions
-            }
-
-            // Рисуем сетку линий
+            // 🔥 Рисуем сетку линий (вычисляем позиции прямо в drawWithContent)
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .drawWithContent {
                         drawContent()
                         val sw = 1.5.dp.toPx()
-                        lineXPositions.forEach { x ->
+                        val total = weights.sum()
+                        var acc = 0f
+                        // ✅ Вычисляем позиции ПРЯМО ЗДЕСЬ, используя size.width
+                        for (i in 0 until weights.size - 1) {
+                            acc += weights[i] / total
+                            val x = acc * size.width
                             drawLine(ColorBorder, Offset(x, headerHeight), Offset(x, size.height), sw)
                         }
                     }
             ) {
+                // 🔥 ВОТ ЗДЕСЬ ВОССТАНОВЛЕНА ТАБЛИЦА!
                 Column(modifier = Modifier.fillMaxSize()) {
                     // Шапка
                     Column(modifier = Modifier.fillMaxWidth()) {
@@ -114,7 +107,6 @@ fun DataTable(modifier: Modifier = Modifier) {
                         state = tableScrollState,
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        // 🔥 ДОБАВИЛИ КЛЮЧИ для оптимизации перерисовки!
                         itemsIndexed(
                             items = vm.parameters,
                             key = { index, param -> param.code }
