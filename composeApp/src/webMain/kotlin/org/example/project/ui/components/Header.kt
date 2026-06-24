@@ -4,7 +4,6 @@
 
 package org.example.project.components
 
-//import org.example.project.oscilloscope.OscilloscopeState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,19 +20,13 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.browser.window
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import org.example.project.logic.HeaderActionsInterface
@@ -45,11 +38,6 @@ import org.example.project.utils.UniversalSelector
 import org.example.project.utils.iconsMenu
 import org.example.project.viewmodels.LocalMainViewModel
 import org.example.project.viewmodels.jsReadDeviceId
-import kotlin.js.unsafeCast
-import kotlinx.browser.window
-import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.launch
-import org.example.project.logic.readDeviceIdentification
 
 @JsExport
 fun triggerDeviceIdentification() {
@@ -58,9 +46,12 @@ fun triggerDeviceIdentification() {
     }
 }
 
+@JsFun("(fn) => { window.onPortReady = fn; }")
+external fun setPortReadyCallback(fn: () -> Unit)
+
 @JsFun("(fn) => { window.triggerDeviceIdentification = fn; }")
 external fun registerTrigger(fn: () -> Unit)
-// Top-level функция-обёртка для вызова JS
+
 fun jsConnectToDevice() {
     js("if (window.connectToDevice) window.connectToDevice()")
 }
@@ -77,36 +68,19 @@ fun HeaderTable(
     thickness: Dp = TableConfig.lineThickness,
     color: Color = TableConfig.lineColor
 ) {
-    // Состояния для меню
     var expanded by remember { mutableStateOf(false) }
-    val menuItems = listOf(
-        "Обновить",
-        "Серийные номера",
-        "Место установки",
-        "Тип механизма",
-        "Дата последнего обслуживания",
-        "Тип устройства"
-    )
+    val menuItems = listOf("Обновить", "Серийные номера", "Место установки", "Тип механизма", "Дата последнего обслуживания", "Тип устройства")
 
     var clue by remember { mutableStateOf(false) }
-    val oscilligraphItems = listOf(
-        "Открыть осциллогаф подключенного устройства",
-        "Открыть осциллограф",
-        "Просмотреть осциллогамму",
-        "Новый осциллограф"
-    )
+    val oscilligraphItems = listOf("Открыть осциллогаф подключенного устройства", "Открыть осциллограф", "Просмотреть осциллогамму", "Новый осциллограф")
 
     var clueHelp by remember { mutableStateOf(false) }
     val helpItems = listOf("Ajuster Help", "About")
 
-    // Состояния для селектора памяти
     var selectedMemory by remember { mutableStateOf("Flash") }
     val memoryOptions = listOf("Flash", "CD", "RAM")
 
-    //Состояние для выбора папки/файла
     var selectFile by remember { mutableStateOf(false) }
-
-    val scope = rememberCoroutineScope()
 
     val vm = LocalMainViewModel.current
 
@@ -120,11 +94,8 @@ fun HeaderTable(
                 .background(TableConfig.headerBackground),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // --------------------------------КНОПКА ОБНОВИТЬ -------------------------------------
             TooltipBox(
-                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(
-                    TooltipAnchorPosition.Above
-                ),
+                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
                 tooltip = { PlainTooltip { Text("Обновить список устройств", fontSize = 12.sp) } },
                 state = rememberTooltipState()
             ) {
@@ -136,28 +107,16 @@ fun HeaderTable(
                             .height(24.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // ЛЕВАЯ ЧАСТЬ: Действие по умолчанию (Обновить)
                         Box(
                             modifier = Modifier
                                 .fillMaxHeight()
-                                .clickable {
-                                    println("Выполнено: ${menuItems[0]}")
-                                }
+                                .clickable { println("Выполнено: ${menuItems[0]}") }
                                 .padding(horizontal = 4.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Build,
-                                null,
-                                modifier = Modifier.size(18.dp),
-                                tint = Color(0xFF04C104)
-                            )
+                            Icon(Icons.Default.Build, null, modifier = Modifier.size(18.dp), tint = Color(0xFF04C104))
                         }
-                        // РАЗДЕЛИТЕЛЬ
-                        Spacer(
-                            modifier = Modifier.fillMaxHeight().width(1.dp).background(Color.Blue)
-                        )
-                        // ПРАВАЯ ЧАСТЬ: Открытие меню
+                        Spacer(modifier = Modifier.fillMaxHeight().width(1.dp).background(Color.Blue))
                         Box(
                             modifier = Modifier
                                 .fillMaxHeight()
@@ -165,11 +124,7 @@ fun HeaderTable(
                                 .padding(horizontal = 2.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.ArrowDropDown,
-                                null,
-                                modifier = Modifier.size(16.dp)
-                            )
+                            Icon(Icons.Default.ArrowDropDown, null, modifier = Modifier.size(16.dp))
                         }
                     }
                     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -179,34 +134,18 @@ fun HeaderTable(
                                 itemHeight = 24.dp,
                                 icon = if (index == 0) Icons.Default.Build else null,
                                 iconColor = Color(0xFFC7092F),
-                                onClick = {
-                                    expanded = false
-                                    println("Выбрано: $label")
-                                }
+                                onClick = { expanded = false; println("Выбрано: $label") }
                             )
                         }
                     }
                 }
             }
-            //-------------------------------------Поиск устройств в сети Modbus--------------------
-            TableIconButton(
-                icon = Icons.Default.Search,
-                tooltipText = "Поиск устройств в сети Modbus",
-                onClick = {
-                    actions.onSearch()
-                }
-            )
-            //----------------------------------Отчеты Exel----------------------------------------
-            TableIconButton(
-                icon = Icons.AutoMirrored.Filled.ListAlt, tooltipText = "Генератор отчетов в Exel",
-                onClick = { actions.onExel() }
-            )
 
-            // --- 4. ОСЦИЛЛОГРАФ ---
+            TableIconButton(icon = Icons.Default.Search, tooltipText = "Поиск устройств в сети Modbus", onClick = { actions.onSearch() })
+            TableIconButton(icon = Icons.AutoMirrored.Filled.ListAlt, tooltipText = "Генератор отчетов в Exel", onClick = { actions.onExel() })
+
             TooltipBox(
-                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(
-                    TooltipAnchorPosition.Above
-                ),
+                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
                 tooltip = { PlainTooltip { Text("Осциллограф", fontSize = 12.sp) } },
                 state = rememberTooltipState()
             ) {
@@ -222,30 +161,15 @@ fun HeaderTable(
                             modifier = Modifier
                                 .fillMaxHeight()
                                 .clickable {
-                                    // Переключаем состояние окна
                                     vm.isOscilloscopeWindowOpen = !vm.isOscilloscopeWindowOpen
-                                    println("🔍 Осциллограф открыт: ${vm.isOscilloscopeWindowOpen}")
-
-                                    // 🔥 Вызываем top-level функцию для JavaScript
                                     toggleOscilloscopeJS(vm.isOscilloscopeWindowOpen)
-                                    println("✅ toggleOscilloscopeJS вызван с параметром: ${vm.isOscilloscopeWindowOpen}")
                                 }
                                 .padding(horizontal = 4.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ShowChart,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp),
-                                tint = Color.Red
-                            )
+                            Icon(Icons.AutoMirrored.Filled.ShowChart, null, modifier = Modifier.size(20.dp), tint = Color.Red)
                         }
-                        Spacer(
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .width(1.dp)
-                                .background(Color.Blue)
-                        )
+                        Spacer(modifier = Modifier.fillMaxHeight().width(1.dp).background(Color.Blue))
                         Box(
                             modifier = Modifier
                                 .fillMaxHeight()
@@ -253,211 +177,90 @@ fun HeaderTable(
                                 .padding(horizontal = 2.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.ArrowDropDown,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
+                            Icon(Icons.Default.ArrowDropDown, null, modifier = Modifier.size(16.dp))
                         }
                     }
-                    DropdownMenu(
-                        expanded = clue,
-                        onDismissRequest = { clue = false },
-                        modifier = Modifier.widthIn(min = 300.dp, max = 600.dp)
-                    ) {
-                        oscilligraphItems.forEach { label ->
-                            UniversalMenuItem(
-                                label = label,
-                                itemHeight = 16.dp,
-                                onClick = {
-                                    clue = false
-                                }
-                            )
-                        }
+                    DropdownMenu(expanded = clue, onDismissRequest = { clue = false }, modifier = Modifier.widthIn(min = 300.dp, max = 600.dp)) {
+                        oscilligraphItems.forEach { label -> UniversalMenuItem(label = label, itemHeight = 16.dp, onClick = { clue = false }) }
                     }
                 }
             }
-            // 5. Терминал
-            TableIconButton(
-                icon = Icons.Default.Terminal,
-                tooltipText = "Терминал",
-                onClick = {
-                    actions.onTerminalOpen()
-                }
-            )
-            //----------------------------Help---------------------------------------------------------------------
+
+            TableIconButton(icon = Icons.Default.Terminal, tooltipText = "Терминал", onClick = { actions.onTerminalOpen() })
+
             TooltipBox(
-                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(
-                    TooltipAnchorPosition.Above
-                ),
+                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
                 tooltip = { PlainTooltip { Text("Help", fontSize = 12.sp) } },
                 state = rememberTooltipState()
             ) {
                 Box(modifier = Modifier.padding(start = 4.dp)) {
                     Row(
-                        modifier = Modifier.clickable { clueHelp = true }.border(1.dp, Color.Blue)
-                            .background(Color.White).padding(horizontal = 4.dp, vertical = 2.dp),
+                        modifier = Modifier.clickable { clueHelp = true }.border(1.dp, Color.Blue).background(Color.White).padding(horizontal = 4.dp, vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.MenuBook,
-                            null,
-                            modifier = Modifier.size(16.dp)
-                        )
+                        Icon(Icons.AutoMirrored.Filled.MenuBook, null, modifier = Modifier.size(16.dp))
                         Icon(Icons.Default.ArrowDropDown, null, modifier = Modifier.size(20.dp))
                     }
                     DropdownMenu(expanded = clueHelp, onDismissRequest = { clueHelp = false }) {
-                        helpItems.forEach { label ->
-                            UniversalMenuItem(
-                                label = label,
-                                itemHeight = 16.dp,
-                                onClick = { clueHelp = false }
-                            )
-                        }
+                        helpItems.forEach { label -> UniversalMenuItem(label = label, itemHeight = 16.dp, onClick = { clueHelp = false }) }
                     }
                 }
             }
-            // -----------------------------------Файловые операции------------------------------------------------------
-            TableIconButton(
-                icon = Icons.Default.Save,
-                tooltipText = "Файловые операции",
-                onClick = {
-                    actions.onFileOration()
-                }
-            )
-            // 8. Черный ящик
-            TableIconButton(
-                icon = Icons.Default.ViewInAr,
-                tooltipText = "Черный ящик",
-                onClick = {
-                    actions.onBlackBox()
-                }
-            )
-            // -------------------------------------Выбор области памяти CPU------------------------
+
+            TableIconButton(icon = Icons.Default.Save, tooltipText = "Файловые операции", onClick = { actions.onFileOration() })
+            TableIconButton(icon = Icons.Default.ViewInAr, tooltipText = "Черный ящик", onClick = { actions.onBlackBox() })
+
             UniversalSelector(
                 label = "",
-                selectedOption = vm.selectedMemoryArea, // Читаем текущее состояние из VM
+                selectedOption = vm.selectedMemoryArea,
                 options = memoryOptions,
                 tooltipText = "Выбор области памяти",
                 minWidth = 45.dp,
-                onOptionSelected = { chosenArea ->
-                    // Передаем выбранную область (Flash, CD, RAM) во ViewModel
-                    vm.changeMemoryArea(chosenArea)
-                }
+                onOptionSelected = { vm.changeMemoryArea(it) }
             )
-            // ----------------------------Выбор папки/файла-----------------------------------------
 
             TooltipBox(
-                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(
-                    TooltipAnchorPosition.Above
-                ),
+                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
                 tooltip = { PlainTooltip { Text("Выбор файла", fontSize = 12.sp) } },
                 state = rememberTooltipState()
             ) {
                 Box(modifier = Modifier.padding(start = 4.dp)) {
                     Row(
-                        modifier = Modifier
-                            .border(1.dp, Color.Blue)
-                            .background(Color.White)
-                            .height(24.dp),
+                        modifier = Modifier.border(1.dp, Color.Blue).background(Color.White).height(24.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // ЛЕВАЯ ЧАСТЬ: Иконка папки
-                        Box(
-                            modifier = Modifier
-                                .width(32.dp)
-                                .fillMaxHeight()
-                                .clickable {
-                                    actions.onPickFileRequest()
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.FolderOpen,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp),
-                                tint = Color(0xFF046308)
-                            )
+                        Box(modifier = Modifier.width(32.dp).fillMaxHeight().clickable { actions.onPickFileRequest() }, contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.FolderOpen, null, modifier = Modifier.size(20.dp), tint = Color(0xFF046308))
                         }
-
-                        // РАЗДЕЛИТЕЛЬ
-                        Spacer(
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .width(1.dp)
-                                .background(Color.Blue)
-                        )
-
-                        // ПРАВАЯ ЧАСТЬ: Стрелочка (Просто открывает меню)
-                        Box(
-                            modifier = Modifier
-                                .width(24.dp)
-                                .fillMaxHeight()
-                                .clickable { selectFile = true },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ArrowDropDown,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
+                        Spacer(modifier = Modifier.fillMaxHeight().width(1.dp).background(Color.Blue))
+                        Box(modifier = Modifier.width(24.dp).fillMaxHeight().clickable { selectFile = true }, contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.ArrowDropDown, null, modifier = Modifier.size(16.dp))
                         }
                     }
-
-                    // Выпадающее меню
                     DropdownMenu(expanded = selectFile, onDismissRequest = { selectFile = false }) {
-                        UniversalMenuItem(
-                            label = "Файл",
-                            itemHeight = 16.dp,
-                            onClick = {
-                                println("DEBUG: Клик по пункту Файл сработал!")
-                                selectFile = false
-                                // Запускаем через встроенный в браузер планировщик,
-                                // чтобы окно открылось СРАЗУ ПОСЛЕ закрытия меню в том же потоке жестов
-                                actions.onPickFileRequest()
-                            }
-                        )
-                        UniversalMenuItem(
-                            label = "Папка",
-                            itemHeight = 16.dp,
-                            onClick = {
-                                selectFile = false
-                                actions.onPickDirectoryRequest()
-                            }
-                        )
+                        UniversalMenuItem(label = "Файл", itemHeight = 16.dp, onClick = { selectFile = false; actions.onPickFileRequest() })
+                        UniversalMenuItem(label = "Папка", itemHeight = 16.dp, onClick = { selectFile = false; actions.onPickDirectoryRequest() })
                     }
                 }
             }
             Spacer(modifier = Modifier.width(5.dp))
-            //----------------------Кнопка "Подключиться"-------------------------------------------
-            TableIconButton(
-                text = "ПОДКЛЮЧИТЬСЯ",
-                tooltipText = "Получить ID устройства, найти его в базе и загрузить уставки",
-                backgroundColor = Color(0xFFC2B7B7),
-                onClick = {
-//                    actions.onFileOration()
-//                    startModbusConnection()
-                }
-            )
+            TableIconButton(text = "ПОДКЛЮЧИТЬСЯ", tooltipText = "Получить ID устройства...", backgroundColor = Color(0xFFC2B7B7), onClick = { })
             Spacer(modifier = Modifier.width(5.dp))
-            //----------------------Кнопка "ID"-----------------------------------------------------
             TableIconButton(
                 text = "ID",
                 tooltipText = "Получить ID устройства",
                 backgroundColor = Color(0xFFC2B7B7),
                 onClick = {
-                    jsReadDeviceId()
-                    println("🔵 Команда отправлена в JS")
-                    js("window.onPortReady = () => { readDeviceIdentification() }")
+                    // Вызываем Kotlin-функцию напрямую, JS-посредник больше не нужен
+                    triggerDeviceIdentification()
+                    println("🔵 Команда запущена из Kotlin")
+
+                    // Если вам нужно, чтобы JS при готовности порта сам дернул этот процесс,
+                    // мы оставляем регистрацию колбэка
+                    setPortReadyCallback { triggerDeviceIdentification() }
                 }
             )
-        } // Конец Row
-
-        // Нижняя сплошная линия-разделитель панели инструментов
-        HorizontalDivider(
-            modifier = Modifier.fillMaxWidth(),
-            thickness = thickness,
-            color = color
-        )
+        }
+        HorizontalDivider(modifier = Modifier.fillMaxWidth(), thickness = thickness, color = color)
     }
 }
