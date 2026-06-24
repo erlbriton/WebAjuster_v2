@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import org.example.project.logic.ModbusRepository
 import org.example.project.logic.ParamConverter
 import org.example.project.models.ParameterType
+import kotlin.js.Promise
 
 // ====================================================================
 // ИНТЕРФЕЙСНЫЙ МОСТ МЕЖДУ KOTLIN И JAVASCRIPT (Wasm-совместимый)

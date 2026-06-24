@@ -72,7 +72,7 @@ actual suspend fun readDeviceIdentification() {
     }
     // Вызываем чтение регистра 0x002D и отправку в осциллограф
     readRegister002D()
-}
+}//////////////////////////////////////////////////////////////////////
 
 
 actual suspend fun readRegister002D() {

@@ -33,8 +33,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.browser.window
+import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
-import org.example.project.jsinterop.startModbusConnection
 import org.example.project.logic.HeaderActionsInterface
 import org.example.project.logic.readDeviceIdentification
 import org.example.project.ui.TableConfig
@@ -44,11 +45,27 @@ import org.example.project.utils.UniversalSelector
 import org.example.project.utils.iconsMenu
 import org.example.project.viewmodels.LocalMainViewModel
 import org.example.project.viewmodels.jsReadDeviceId
+import kotlin.js.unsafeCast
+import kotlinx.browser.window
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.launch
+import org.example.project.logic.readDeviceIdentification
 
+@JsExport
+fun triggerDeviceIdentification() {
+    MainScope().launch {
+        readDeviceIdentification()
+    }
+}
+
+@JsFun("(fn) => { window.triggerDeviceIdentification = fn; }")
+external fun registerTrigger(fn: () -> Unit)
 // Top-level функция-обёртка для вызова JS
 fun jsConnectToDevice() {
     js("if (window.connectToDevice) window.connectToDevice()")
 }
+
+private fun isTruthy(value: JsAny?): Boolean = js("!!value")
 
 @JsFun("(isVisible) => { if (window.toggleOscilloscopeVisibility) window.toggleOscilloscopeVisibility(isVisible); }")
 external fun toggleOscilloscopeJS(isVisible: Boolean)
@@ -429,10 +446,9 @@ fun HeaderTable(
                 tooltipText = "Получить ID устройства",
                 backgroundColor = Color(0xFFC2B7B7),
                 onClick = {
-                 //   scope.launch {
-                       // readDeviceIdentification()
                     jsReadDeviceId()
-                  //  }
+                    println("🔵 Команда отправлена в JS")
+                    js("window.onPortReady = () => { readDeviceIdentification() }")
                 }
             )
         } // Конец Row

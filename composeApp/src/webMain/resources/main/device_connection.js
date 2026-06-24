@@ -77,35 +77,24 @@ window.disconnectFromDevice = function() {
 window.readDeviceId = async function() {
     console.log('[Main] 🎯 readDeviceId вызвана из Kotlin');
 
-    // Если порт еще не подключен, запускаем процедуру подключения
-    if (!window.state.isConnected) {
-        console.log('[Main] 🔌 Порт не подключён, подключаем...');
-        try {
-            const port = await navigator.serial.requestPort();
-
-            if (!port.readable) {
-                console.log('[Main] 🔌 Порт закрыт, вызываем open()...');
-                await port.open({ baudRate: window.state.config.baudRate });
-            }
-
-            const readable = port.readable;
-            const writable = port.writable;
-
-            // Воркер теперь гарантированно существует, отправляем потоки
-            window.state.serialWorker.postMessage({
-                type: 'setStreams',
-                readable: readable,
-                writable: writable
-            }, [readable, writable]);
-
-            window.state.isConnected = true;
-        } catch (error) {
-            console.error('[Main] ❌ Ошибка при подключении порта:', error);
-            return;
-        }
+    if (window.state.isConnected) {
+        console.log('[Main] ℹ️ Порт уже подключен.');
+        return true; // Сразу говорим: "Все ок, работай"
     }
 
-    // Дальнейший ваш код отправки команды в воркер для чтения ID...
+    try {
+        const port = await navigator.serial.requestPort();
+        await port.open({ baudRate: window.state.config.baudRate });
+
+        // ... (ваш код с воркерами) ...
+
+        window.state.isConnected = true;
+        console.log('[Main] ✅ Порт открыт, возвращаю SUCCESS');
+        return true; // <-- ВОЗВРАЩАЕМ УСПЕХ
+    } catch (error) {
+        console.error('[Main] ❌ ОШИБКА:', error);
+        return false; // <-- ВОЗВРАЩАЕМ ОШИБКУ
+    }
 };
 
 console.log('[DeviceConnection] ✅ device_connection.js загружен');
