@@ -10,26 +10,22 @@ let oscStartWeights = [];
 
 export function createOscilloscopeTable() {
     const tbody = document.getElementById('oscTableBody');
-    if (!tbody) return;
+    if (!tbody || !window.ramParameters) return;
 
     tbody.innerHTML = '';
 
-    for (let i = 0; i < 2; i++) {
+    window.ramParameters.forEach((param, i) => {
         const row = document.createElement('tr');
         row.style.height = '24px';
 
-        const nameCell = document.createElement('td');
-        row.appendChild(nameCell);
+        // Создаем ячейки данных (Name, Hex, Physical, Unit)
+        [param.name, param.hex, param.value, param.unit].forEach(text => {
+            const td = document.createElement('td');
+            td.textContent = text || '';
+            row.appendChild(td);
+        });
 
-        const hexCell = document.createElement('td');
-        row.appendChild(hexCell);
-
-        const physCell = document.createElement('td');
-        row.appendChild(physCell);
-
-        const unitCell = document.createElement('td');
-        row.appendChild(unitCell);
-
+        // Создаем ячейку для графика
         const graphCell = document.createElement('td');
         graphCell.className = 'graph-cell';
         graphCell.style.position = 'relative';
@@ -42,21 +38,24 @@ export function createOscilloscopeTable() {
         row.appendChild(graphCell);
 
         tbody.appendChild(row);
-    }
+    });
 
     updateOscTableColumnWidths();
+    // Важно: теперь initGraphContexts тоже должна перебирать параметры по длине
     initGraphContexts();
 
     setTimeout(() => {
         updateGraphCanvasSizes();
     }, 50);
 
-    console.log('[Main] ✅ Таблица осциллографа создана');
+    console.log('[Main] ✅ Таблица осциллографа заполнена и создана');
 }
 
 export function initGraphContexts() {
     state.graphContexts = [];
-    for (let i = 0; i < 2; i++) {
+    if (!window.ramParameters) return;
+
+    for (let i = 0; i < window.ramParameters.length; i++) {
         const canvas = document.getElementById(`osc-graph-canvas-${i}`);
         if (canvas) {
             const ctx = canvas.getContext('2d');
