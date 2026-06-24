@@ -1,6 +1,7 @@
 // app_state.js - Единое хранилище состояния приложения
 
 export const state = {
+serialPort: null, // Здесь будем хранить объект порта
     // Workers и каналы
     serialWorker: null,
     scopeWorker: null,

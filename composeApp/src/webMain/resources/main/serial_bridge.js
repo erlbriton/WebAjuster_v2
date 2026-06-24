@@ -3,7 +3,7 @@ window.lastDetectedPortName = "";
 window.serialIdleTimeout = null;
 
 // Главная функция трансивера
-window.wasmSerialTransceive = async (requestBytes, expectedLen) => {
+window.wasmSerialTransceive = async (requestBytes, expectedLen) => {////////////////////////\
     if (window.serialIdleTimeout) {
         clearTimeout(window.serialIdleTimeout);
         window.serialIdleTimeout = null;
@@ -66,23 +66,14 @@ window.wasmSerialTransceive = async (requestBytes, expectedLen) => {
                 if (done) break;
             }
         } finally {
-            clearTimeout(timeout);
-        }
-
-        if (reader) { reader.releaseLock(); reader = null; }
-        if (writer) { writer.releaseLock(); writer = null; }
-
-        window.serialIdleTimeout = setTimeout(async () => {
-            if (window.activeWasmSerialPort && window.activeWasmSerialPort.readable) {
-                const p = window.activeWasmSerialPort;
-                window.activeWasmSerialPort = null;
-                window.lastDetectedPortName = "";
-                try { await p.close(); } catch(e) {}
+                clearTimeout(timeout);
             }
-        }, 5000);
 
-        return buf;
-    } catch (err) {
+            if (reader) { reader.releaseLock(); reader = null; }
+            if (writer) { writer.releaseLock(); writer = null; }
+
+            return buf;
+        } catch (err) {
         console.error("💥 Ошибка WebSerial: " + err.message);
         if (reader) try { reader.releaseLock(); } catch(e) {}
         if (writer) try { writer.releaseLock(); } catch(e) {}
