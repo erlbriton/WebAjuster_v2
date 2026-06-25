@@ -10,6 +10,9 @@ let oscStartWeights = [];
 
 export function createOscilloscopeTable() {
     const tbody = document.getElementById('oscTableBody');
+
+    console.log('[UI Проверка] Найдена ли таблица (tbody):', tbody, '| Параметры:', window.ramParameters?.length);
+
     if (!tbody || !window.ramParameters) return;
 
     tbody.innerHTML = '';
@@ -18,14 +21,14 @@ export function createOscilloscopeTable() {
         const row = document.createElement('tr');
         row.style.height = '24px';
 
-        // Создаем ячейки данных (Name, Hex, Physical, Unit)
+        // 1. Создаем ячейки данных (Name, Hex, Physical, Unit)
         [param.name, param.hex, param.value, param.unit].forEach(text => {
             const td = document.createElement('td');
             td.textContent = text || '';
             row.appendChild(td);
-        });
+        }); // <-- Цикл текстовых ячеек завершается строго здесь
 
-        // Создаем ячейку для графика
+        // 2. Создаем ячейку для графика
         const graphCell = document.createElement('td');
         graphCell.className = 'graph-cell';
         graphCell.style.position = 'relative';
@@ -34,6 +37,7 @@ export function createOscilloscopeTable() {
         const graphCanvas = document.createElement('canvas');
         graphCanvas.id = `osc-graph-canvas-${i}`;
         graphCanvas.style.cssText = `display: block;`;
+
         graphCell.appendChild(graphCanvas);
         row.appendChild(graphCell);
 
@@ -41,10 +45,10 @@ export function createOscilloscopeTable() {
     });
 
     updateOscTableColumnWidths();
-    // Важно: теперь initGraphContexts тоже должна перебирать параметры по длине
-    initGraphContexts();
 
+    // Даем DOM время на отрисовку, затем подхватываем контексты холстов
     setTimeout(() => {
+        initGraphContexts();
         updateGraphCanvasSizes();
     }, 50);
 

@@ -1,4 +1,3 @@
-// ringBuffer.js
 class RingBuffer {
     constructor(capacity) {
         this.capacity = capacity;
@@ -7,7 +6,12 @@ class RingBuffer {
         this.totalStored = 0;
     }
 
-    // Добавление одной точки в буфер без сдвига элементов в памяти
+    // Для совместимости с кодом, который ожидает .length
+    get length() {
+        return this.totalStored;
+    }
+
+    // Добавление точки
     push(value) {
         this.buffer[this.writePointer] = value;
         this.writePointer = (this.writePointer + 1) % this.capacity;
@@ -16,7 +20,15 @@ class RingBuffer {
         }
     }
 
-    // Получение линейного массива от старых точек к самым новым
+    // Добавленный метод get для совместимости с тем, что вызывал воркер
+    get(index) {
+        if (index < 0 || index >= this.totalStored) return undefined;
+        // Логика получения элемента из кольцевого буфера
+        const actualIndex = (this.writePointer - this.totalStored + index + this.capacity) % this.capacity;
+        return this.buffer[actualIndex];
+    }
+
+    // Получение линейного массива
     getLinearData() {
         if (this.totalStored === 0) return new Float32Array(0);
         

@@ -19,11 +19,24 @@ export function handleScopeWorkerMessage(event) {
 }
 
 export function drawGraphsFromData(allData) {
+    console.log('[ScopeHandler] Данные:', allData.length, 'Контексты:', state.graphContexts?.length, 'Visible:', state.oscTableVisible);
     if (!state.oscTableVisible) return;
 
     state.lastGraphData = allData;
 
-    const colors = ['#00ff00', '#ff0000'];
+    // Расширенная палитра ярких цветов для темного фона
+    const colors = [
+        '#00ff00', // 1. Зеленый (как и был)
+        '#ff0000', // 2. Красный (как и был)
+        '#00ffff', // 3. Бирюзовый / Циан
+        '#ffff00', // 4. Желтый
+        '#ff00ff', // 5. Пурпурный
+        '#ff9900', // 6. Оранжевый
+        '#ff3366', // 7. Розовый
+        '#33ccff', // 8. Голубой
+        '#ffffff', // 9. Белый
+        '#ccff33'  // 10. Салатовый
+    ];
 
     for (let i = 0; i < Math.min(allData.length, state.graphContexts.length); i++) {
         const graph = state.graphContexts[i];
@@ -49,7 +62,8 @@ export function drawGraphsFromData(allData) {
         const centerY = height / 2;
         const scaleY = (height / 2) / 1100;
 
-        ctx.strokeStyle = colors[i];
+        // Берем цвет по остатку от деления, чтобы они никогда не кончались
+        ctx.strokeStyle = colors[i % colors.length];
         ctx.lineWidth = 2;
         ctx.beginPath();
 

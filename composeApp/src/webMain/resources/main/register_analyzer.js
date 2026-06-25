@@ -5,7 +5,7 @@ import { state } from './app_state.js';
 /**
  * Анализирует ramParameters и возвращает структуру для чтения
  */
-function analyzeRegisters() {
+export function analyzeRegisters() {
     const params = window.ramParameters;
     if (!params || params.length === 0) {
         console.error('[RegisterAnalyzer] ⚠️ ramParameters не загружены! Данные: ', params);

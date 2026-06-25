@@ -6,6 +6,18 @@ import { handleScopeWorkerMessage } from './scope_handler.js';
 import { createOscilloscopeTable, updateGraphCanvasSizes } from './oscilloscope_ui.js';
 import { analyzeRegisters, buildChunks } from './register_analyzer.js';
 
+window.receiveParametersFromKotlin = function(jsonString) {
+    console.log('[Main] ✅ Данные приняты в receiveParametersFromKotlin');
+    window.ramParameters = JSON.parse(jsonString);
+
+    createOscilloscopeTable();
+
+    const analysis = analyzeRegisters();
+    const chunks = buildChunks(analysis.registers);
+    if(state.serialWorker) state.serialWorker.postMessage({ type: 'initChunks', chunks: chunks });
+    if(state.scopeWorker) state.scopeWorker.postMessage({ type: 'initParams', params: analysis.paramMapping });
+};
+
 // Все переменные состояния теперь находятся в state (app_state.js)
 // Глобальными остаются только функции, которые вызывает Kotlin
 
@@ -300,12 +312,5 @@ window.generateRegisterMap = function() {
     return map;
 };
 
-window.receiveParametersFromKotlin = function(jsonString) {
-    console.log('[Main] 📥 Получены данные из Kotlin, парсинг...');
-    window.ramParameters = JSON.parse(jsonString);
-    console.log('[Main] ✅ Параметры загружены в window.ramParameters, размер:', window.ramParameters.length);
-
-    // НЕ вызываем analyzeRegisters здесь, только сохраняем данные
-};
 
 console.log('[Main] ✅ main.js загружен');
