@@ -157,7 +157,7 @@ function renderLoop(timestamp) {
 // === ОТПРАВКА ДАННЫХ В MAIN THREAD ===
 function drawGraphs() {
     const graphData = [];
-    const limit = Math.min(10, buffers.length);
+    const limit = Math.min(50, buffers.length);
     for (let i = 0; i < limit; i++) {
         const data = buffers[i].getLinearData();
         graphData.push(data);

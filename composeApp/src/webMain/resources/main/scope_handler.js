@@ -34,18 +34,16 @@ export function drawGraphsFromData(allData) {
         '#ff9900', '#ff3366', '#33ccff', '#ffffff', '#ccff33'
     ];
 
-    // Масштабирование под 1 Гц (50 точек опроса при 20мс = 20 пикселей ширины окна сетки)
+    // Жесткие пропорции: 1 секунда = 20 пикселей.
+    // При опросе 20мс в одной секунде укладывается 50 точек.
+    // 20 пикселей / 50 точек = ровно 0.4 пикселя на одну точку данных.
     const stepX = 0.4;
     const lineSpacing = 20;
-    gridOffset = (gridOffset + stepX) % lineSpacing;
 
-    // Проверяем, прошло ли 300 мс с момента последнего обновления текста
-    const currentTime = Date.now();
-    const shouldUpdateText = (currentTime - lastTextUpdateTime) >= 300;
-
-    if (shouldUpdateText) {
-        lastTextUpdateTime = currentTime;
-    }
+    // СВЕРХТОЧНЫЙ РАСЧЕТ СЕТКИ ПО ВРЕМЕНИ:
+    // Скорость: 20px за 1000ms = 0.02 пикселя в миллисекунду.
+    // Теперь сетка идет идеально ровно, даже если из-за обилия текста прыгает FPS!
+    const gridOffset = (performance.now() * 0.02) % lineSpacing;
 
     for (let i = 0; i < Math.min(allData.length, state.graphContexts.length); i++) {
         const graph = state.graphContexts[i];
@@ -57,13 +55,12 @@ export function drawGraphsFromData(allData) {
         const height = canvas.height;
         const data = allData[i] || [];
 
+        // Очистка экрана (черный фон осциллографа)
         ctx.fillStyle = '#1a1a1a';
         ctx.fillRect(0, 0, width, height);
 
-        if (data.length === 0) continue;
-
-        // Текстовые значения обновляются только по таймеру (раз в 300 мс)
-        if (shouldUpdateText) {
+        // ОБНОВЛЕНИЕ ТЕКСТА: Работает БЕЗ задержек, на каждом кадре
+        if (data.length > 0) {
             const currentValue = Math.floor(data[data.length - 1]);
             const row = canvas.closest('tr');
             if (row && row.cells.length >= 3) {
@@ -79,16 +76,21 @@ export function drawGraphsFromData(allData) {
             }
         }
 
+        if (data.length === 0) continue;
+
+        // ОТРИСОВКА СЕТКИ: Линии идут строго через каждые 20 пикселей (1 секунда)
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
         ctx.lineWidth = 1;
         ctx.beginPath();
 
-        for (let x = lineSpacing - gridOffset; x < width; x += lineSpacing) {
+        // Рисуем линии справа налево, смещая их на выверенный по времени gridOffset
+        for (let x = width - gridOffset; x > 0; x -= lineSpacing) {
             ctx.moveTo(x, 0);
             ctx.lineTo(x, height);
         }
         ctx.stroke();
 
+        // ОТРИСОВКА СИГНАЛА (Движение справа налево)
         const maxPoints = Math.floor(width / stepX);
         const pointsToShow = Math.min(data.length, maxPoints);
         const startIndex = data.length - pointsToShow;
@@ -102,7 +104,9 @@ export function drawGraphsFromData(allData) {
 
         for (let j = 0; j < pointsToShow; j++) {
             const dataIndex = startIndex + j;
-            const x = j * stepX;
+
+            // Самая последняя точка всегда привязана к правому краю
+            const x = width - (pointsToShow - 1 - j) * stepX;
             const y = centerY - (data[dataIndex] * scaleY);
 
             if (j === 0) {
