@@ -14,6 +14,8 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -28,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import org.example.project.viewmodels.LocalMainViewModel
 
 @Composable
@@ -111,24 +114,31 @@ fun DeviceSidebar(modifier: Modifier = Modifier) {
         // val vm = LocalMainViewModel.current
 
     if (vm.showHardwareDialog) {
-        AlertDialog(
-            onDismissRequest = { vm.showHardwareDialog = false },
-            title = {
-                Text(text = "Паспорт устройства", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            },
-            text = {
-                Text(text = vm.hardwareDialogText, fontSize = 14.sp)
-            },
-            confirmButton = {
-                Button(
-                    onClick = { vm.showHardwareDialog = false },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFA6E594))
+        Dialog(onDismissRequest = { vm.showHardwareDialog = false }) {
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                modifier = Modifier.padding(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("ОК", color = Color.Black)
+                    Text(
+                        text = vm.hardwareDialogText,
+                        fontSize = 14.sp,
+                        modifier = Modifier.weight(1f) // Текст занимает все доступное место
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Button(
+                        onClick = { vm.showHardwareDialog = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFA6E594)),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Text("ОК", color = Color.Black)
+                    }
                 }
-            },
-            shape = RoundedCornerShape(12.dp),
-            containerColor = Color.White
-        )
+            }
+        }
     }
 }

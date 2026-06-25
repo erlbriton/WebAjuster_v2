@@ -57,18 +57,20 @@ window.connectToDevice = async function() {
         const writable = port.writable;
 
         state.serialWorker.postMessage({
-            type: 'setStreams',
-            readable: readable,
-            writable: writable
-        }, [readable, writable]);
+                    type: 'setStreams',
+                    readable: readable,
+                    writable: writable
+                }, [readable, writable]);
 
-        console.log('[Main] ✅ Streams переданы в Serial Worker');
+                console.log('[Main] ✅ Streams переданы в Serial Worker');
 
-    } catch (error) {
-        console.error('[Main] ❌ Ошибка подключения:', error.message);
-        alert('Ошибка подключения: ' + error.message);
-    }
-};
+                // Вызов колбэка для Kotlin, если он был зарегистрирован ранее
+                if (typeof window.onPortReady === 'function') {
+                    console.log('[DeviceConnection] ⚡ Вызываю callback onPortReady() для Kotlin');
+                    window.onPortReady();
+                }
+
+            } catch (error) {
 
 window.disconnectFromDevice = function() {
     state.serialWorker.postMessage({ type: 'disconnect' });

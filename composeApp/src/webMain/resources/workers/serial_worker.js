@@ -100,8 +100,10 @@ async function disconnectPort() {
 }
 
 function startOscilloscope() {
+    console.log(`[Oscilloscope] Попытка запуска. isRunning: ${isRunning}, isConnected: ${isConnected}`);
+
     if (isRunning || !isConnected) {
-        self.postMessage({ type: 'error', message: 'Невозможно запустить' });
+        self.postMessage({ type: 'error', message: `Невозможно запустить: isRunning=${isRunning}, isConnected=${isConnected}` });
         return;
     }
 

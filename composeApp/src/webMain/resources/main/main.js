@@ -141,7 +141,7 @@ window.stopOscilloscope = function() {
 };
 
 window.toggleOscilloscopeVisibility = function(isVisible) {
-    console.log('[Main]  toggleOscilloscopeVisibility вызвана с isVisible =', isVisible);
+    console.log('[Main] toggleOscilloscopeVisibility вызвана с isVisible =', isVisible);
 
     if (!state.oscWrapper) {
         console.error('[Main] ❌ Осциллограф не создан');
@@ -182,53 +182,29 @@ window.toggleOscilloscopeVisibility = function(isVisible) {
             updateGraphCanvasSizes();
         }, 100);
 
-        // В момент открытия берем данные, которые уже есть в памяти (window.ramParameters)
-        // и отправляем их в воркеры
         if (window.ramParameters && window.analyzeRegisters && window.buildChunks) {
             const analysis = window.analyzeRegisters();
             const chunks = window.buildChunks(analysis.registers);
 
-            console.log('[Main] 🚀 Отправка параметров в воркеры при открытии...');
-
-            // Добавляем строгую проверку, что воркеры уже созданы и существуют
-            if (state.serialWorker) {
-                state.serialWorker.postMessage({ type: 'initChunks', chunks: chunks });
-            } else {
-                console.warn('[Main] ⚠️ serialWorker еще не готов');
-            }
-
-            if (state.scopeWorker) {
-                state.scopeWorker.postMessage({ type: 'initParams', params: analysis.paramMapping });
-            } else {
-                console.warn('[Main] ⚠️ scopeWorker еще не готов');
-            }
+            if (state.serialWorker) state.serialWorker.postMessage({ type: 'initChunks', chunks: chunks });
+            if (state.scopeWorker) state.scopeWorker.postMessage({ type: 'initParams', params: analysis.paramMapping });
         }
 
-        // Защищаем вызовы команд запуска от null-объектов
-        if (state.serialWorker) {
-            state.serialWorker.postMessage({ type: 'start' });
-        }
-        if (state.scopeWorker) {
-            state.scopeWorker.postMessage({ type: 'start' });
-        }
-
-        console.log('[Main] ✅ Попытка запуска осциллографа обработана');
-        console.log('[Main] ✅ Осциллограф открыт и запущен');
+        if (state.serialWorker) state.serialWorker.postMessage({ type: 'start' });
+        if (state.scopeWorker) state.scopeWorker.postMessage({ type: 'start' });
 
     } else {
         console.log('[Main] 👁️ Закрываем осциллограф...');
 
-        state.serialWorker.postMessage({ type: 'stop' });
-        state.scopeWorker.postMessage({ type: 'stop' });
+        if (state.serialWorker) state.serialWorker.postMessage({ type: 'stop' });
+        if (state.scopeWorker) state.scopeWorker.postMessage({ type: 'stop' });
 
         state.oscWrapper.style.display = 'none';
         state.oscTableVisible = false;
 
         if (inputPanel) {
-            inputPanel.classList.add('d-none', 'hidden'); // Улучшено скрытие
+            inputPanel.classList.add('d-none', 'hidden');
         }
-
-        console.log('[Main] ✅ Осциллограф закрыт');
     }
 };
 
