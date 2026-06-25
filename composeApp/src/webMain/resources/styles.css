@@ -5,3 +5,19 @@ html, body {
     padding: 0;
     overflow: hidden;
 }
+
+table tbody tr,
+table tbody td {
+    border: none !important;
+}
+
+/* Восстанавливаем разделители и рамки СТРОГО в шапке таблицы */
+table thead th {
+    border-bottom: 4px solid #444444 !important; /* Линия под всей шапкой */
+    border-right: 4px solid #3a3a3a !important;  /* Вертикальные линии между колонками */
+}
+
+/* Убираем крайнюю правую линию в шапке, чтобы она не упиралась в край экрана */
+table thead th:last-child {
+    border-right: none !important;
+}
