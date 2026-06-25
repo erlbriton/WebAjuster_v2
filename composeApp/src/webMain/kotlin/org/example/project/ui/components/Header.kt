@@ -51,6 +51,7 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import org.example.project.logic.readDeviceIdentification
 
+
 @JsExport
 fun triggerDeviceIdentification() {
     MainScope().launch {
