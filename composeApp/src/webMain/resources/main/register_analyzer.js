@@ -5,9 +5,10 @@ import { state } from './app_state.js';
 /**
  * Анализирует ramParameters и возвращает структуру для чтения
  */
-export function analyzeRegisters() {
-    if (!window.ramParameters || window.ramParameters.length === 0) {
-        console.warn('[RegisterAnalyzer] ⚠️ ramParameters не загружены');
+function analyzeRegisters() {
+    const params = window.ramParameters;
+    if (!params || params.length === 0) {
+        console.error('[RegisterAnalyzer] ⚠️ ramParameters не загружены! Данные: ', params);
         return { registers: [], paramMapping: [] };
     }
 

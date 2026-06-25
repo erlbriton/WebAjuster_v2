@@ -3,7 +3,6 @@
 import { state } from './app_state.js';
 import { calculateCRC16, showDeviceIdPopup } from './utils.js';
 
-// Гарантируем, что объект state существует на самый ранний момент вызова из Kotlin
 if (!window.state) {
     window.state = {
         isInitialized: false,
@@ -14,36 +13,19 @@ if (!window.state) {
     };
 }
 
-// Создаем воркеры мгновенно при загрузке скрипта, не дожидаясь DOMContentLoaded или Kotlin
 if (!window.state.serialWorker) {
-    console.log('[DeviceConnection] 📦 Раннее создание serialWorker...');
     window.state.serialWorker = new Worker('./serial_worker.js');
 }
 if (!window.state.scopeWorker) {
-    console.log('[DeviceConnection] 📦 Раннее создание scopeWorker...');
     window.state.scopeWorker = new Worker('./scope_worker.js');
 }
 
 window.connectToDevice = async function() {
-   // Ждем в цикле, пока главный поток приложения (main.js) не создаст воркер
-       // Если Kotlin вызвал функцию, а воркеры еще не созданы в main.js — создаем их экстренно прямо сейчас
-           if (!state.serialWorker) {
-               console.log('[DeviceConnection] 🚨 Экстренное создание воркеров до загрузки DOM...');
-               try {
-                   state.serialWorker = new Worker('./serial_worker.js');
-                   state.scopeWorker = new Worker('./scope_worker.js');
-
-                   // Минимальная базовая инициализация воркера, чтобы он не выдавал ошибку "не инициализирован"
-                   state.serialWorker.postMessage({
-                       type: 'init',
-                       config: state.config || { baudRate: 115200 }
-                   });
-
-                   console.log('[DeviceConnection] ✅ Воркеры успешно созданы экстренным путем');
-               } catch (e) {
-                   console.error('[DeviceConnection] ❌ Не удалось создать воркеры:', e);
-               }
-           }
+    // ... (код инициализации воркеров тот же) ...
+    if (!state.serialWorker) {
+        state.serialWorker = new Worker('./serial_worker.js');
+        state.scopeWorker = new Worker('./scope_worker.js');
+    }
 
     console.log('[Main] 🔌 Запрос порта у пользователя...');
 
@@ -56,21 +38,31 @@ window.connectToDevice = async function() {
         const readable = port.readable;
         const writable = port.writable;
 
-        state.serialWorker.postMessage({
-                    type: 'setStreams',
-                    readable: readable,
-                    writable: writable
-                }, [readable, writable]);
+        // Создаем обработчик ответа от воркера
+        const onWorkerConnected = (e) => {
+            if (e.data.type === 'connected') {
+                console.log('[DeviceConnection] ✅ Воркер подтвердил готовность, можно запускать процессы');
+                state.isConnected = true; // Теперь можно безопасно ставить флаг
+                state.serialWorker.removeEventListener('message', onWorkerConnected);
 
-                console.log('[Main] ✅ Streams переданы в Serial Worker');
-
-                // Вызов колбэка для Kotlin, если он был зарегистрирован ранее
                 if (typeof window.onPortReady === 'function') {
-                    console.log('[DeviceConnection] ⚡ Вызываю callback onPortReady() для Kotlin');
                     window.onPortReady();
                 }
+            }
+        };
 
-            } catch (error) {
+        state.serialWorker.addEventListener('message', onWorkerConnected);
+
+        state.serialWorker.postMessage({
+            type: 'setStreams',
+            readable: readable,
+            writable: writable
+        }, [readable, writable]);
+
+    } catch (error) {
+        console.error('[Main] ❌ Ошибка подключения:', error);
+    }
+};
 
 window.disconnectFromDevice = function() {
     state.serialWorker.postMessage({ type: 'disconnect' });
@@ -80,22 +72,17 @@ window.readDeviceId = async function() {
     console.log('[Main] 🎯 readDeviceId вызвана из Kotlin');
 
     if (window.state.isConnected) {
-        console.log('[Main] ℹ️ Порт уже подключен.');
-        return true; // Сразу говорим: "Все ок, работай"
+        return true;
     }
 
     try {
         const port = await navigator.serial.requestPort();
         await port.open({ baudRate: window.state.config.baudRate });
-
-        // ... (ваш код с воркерами) ...
-
         window.state.isConnected = true;
-        console.log('[Main] ✅ Порт открыт, возвращаю SUCCESS');
-        return true; // <-- ВОЗВРАЩАЕМ УСПЕХ
+        return true;
     } catch (error) {
         console.error('[Main] ❌ ОШИБКА:', error);
-        return false; // <-- ВОЗВРАЩАЕМ ОШИБКУ
+        return false;
     }
 };
 

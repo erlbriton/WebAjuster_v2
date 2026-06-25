@@ -142,6 +142,7 @@ window.stopOscilloscope = function() {
 
 window.toggleOscilloscopeVisibility = function(isVisible) {
     console.log('[Main] toggleOscilloscopeVisibility вызвана с isVisible =', isVisible);
+    console.log('[Main] Состояние oscWrapper:', state.oscWrapper);
 
     if (!state.oscWrapper) {
         console.error('[Main] ❌ Осциллограф не создан');
@@ -183,18 +184,67 @@ window.toggleOscilloscopeVisibility = function(isVisible) {
         }, 100);
 
         if (window.ramParameters && window.analyzeRegisters && window.buildChunks) {
-            const analysis = window.analyzeRegisters();
-            const chunks = window.buildChunks(analysis.registers);
+                    const analysis = window.analyzeRegisters();
+                    const chunks = window.buildChunks(analysis.registers);
 
-            if (state.serialWorker) state.serialWorker.postMessage({ type: 'initChunks', chunks: chunks });
-            if (state.scopeWorker) state.scopeWorker.postMessage({ type: 'initParams', params: analysis.paramMapping });
-        }
+                    if (state.serialWorker) state.serialWorker.postMessage({ type: 'initChunks', chunks: chunks });
+                    if (state.scopeWorker) state.scopeWorker.postMessage({ type: 'initParams', params: analysis.paramMapping });
+                }
 
-        if (state.serialWorker) state.serialWorker.postMessage({ type: 'start' });
-        if (state.scopeWorker) state.scopeWorker.postMessage({ type: 'start' });
+                // --- НОВЫЙ БЛОК ЗАПУСКА ГРАФИКОВ ---
+                if (!window.activeWasmSerialPort) {
+                    console.error('[Main] ❌ COM-порт не открыт! Сначала выберите порт в приложении.');
+                    return; // Не запускаем, если порт не выбран
+                }
 
-    } else {
-        console.log('[Main] 👁️ Закрываем осциллограф...');
+                if (!window.state.isConnected) {
+                    console.log('[Main] 🔌 Передаем открытый порт в осциллограф...');
+                    const port = window.activeWasmSerialPort;
+                    const readable = port.readable;
+                    const writable = port.writable;
+
+                   const onWorkerConnected = (e) => {
+                                           if (e.data.type === 'connected') {
+                                               window.state.isConnected = true;
+                                               console.log('[Main] ✅ Потоки захвачены воркером.');
+                                               state.serialWorker.removeEventListener('message', onWorkerConnected);
+
+                                               if (!window.ramParameters || window.ramParameters.length === 0) {
+                                                   console.error('[Main] ❌ ОШИБКА: ramParameters всё еще пусты!');
+                                                   return;
+                                               }
+
+                                               const analysis = window.analyzeRegisters();
+                                               state.scopeWorker.postMessage({ type: 'initParams', params: analysis.paramMapping });
+
+                                               const onScopeReady = (msg) => {
+                                                   if (msg.data.type === 'initialized') {
+                                                       state.scopeWorker.removeEventListener('message', onScopeReady);
+
+                                                       console.log('[Main] ✅ ScopeWorker готов. СТАРТ графиков!');
+                                                       state.serialWorker.postMessage({ type: 'start' });
+                                                       state.scopeWorker.postMessage({ type: 'start' });
+                                                   }
+                                               };
+                                               state.scopeWorker.addEventListener('message', onScopeReady);
+                                           }
+                                       };
+                    state.serialWorker.addEventListener('message', onWorkerConnected);
+
+                    state.serialWorker.postMessage({
+                        type: 'setStreams',
+                        readable: readable,
+                        writable: writable
+                    }, [readable, writable]);
+                } else {
+                    console.log('[Main] ▶️ Соединение уже есть. СТАРТ графиков!');
+                    if (state.serialWorker) state.serialWorker.postMessage({ type: 'start' });
+                    if (state.scopeWorker) state.scopeWorker.postMessage({ type: 'start' });
+                }
+                // ------------------------------------
+
+            } else {
+                console.log('[Main] 👁️ Закрываем осциллограф...');
 
         if (state.serialWorker) state.serialWorker.postMessage({ type: 'stop' });
         if (state.scopeWorker) state.scopeWorker.postMessage({ type: 'stop' });
@@ -252,16 +302,10 @@ window.generateRegisterMap = function() {
 
 window.receiveParametersFromKotlin = function(jsonString) {
     console.log('[Main] 📥 Получены данные из Kotlin, парсинг...');
-    const params = JSON.parse(jsonString);
-    window.ramParameters = params;
+    window.ramParameters = JSON.parse(jsonString);
+    console.log('[Main] ✅ Параметры загружены в window.ramParameters, размер:', window.ramParameters.length);
 
-    const analysis = analyzeRegisters();
-    const chunks = buildChunks(analysis.registers);
-
-    console.log('[Main] ✅ Карта чанков и параметров готова, отправляю в воркеры');
-
-    state.serialWorker.postMessage({ type: 'initChunks', chunks: chunks });
-    state.scopeWorker.postMessage({ type: 'initParams', params: analysis.paramMapping });
+    // НЕ вызываем analyzeRegisters здесь, только сохраняем данные
 };
 
 console.log('[Main] ✅ main.js загружен');

@@ -134,6 +134,16 @@ class LeftPanel {
 }
 
 window.leftPanel = new LeftPanel();
-window.buildLeftPanel = function(jsonStr) { window.leftPanel.buildFromJSON(jsonStr); };
+window.buildLeftPanel = function(jsonStr) {
+    // 1. Отрисовываем панель
+    window.leftPanel.buildFromJSON(jsonStr);
+
+    // 2. Передаем данные в main.js для запуска осциллографа
+    if (typeof window.receiveParametersFromKotlin === 'function') {
+        window.receiveParametersFromKotlin(jsonStr);
+    } else {
+        console.warn('[LeftPanel] Функция window.receiveParametersFromKotlin еще не определена в main.js');
+    }
+};
 
 console.log('[LeftPanel] Module loaded with Worker');

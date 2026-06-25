@@ -32,11 +32,12 @@ self.onmessage = function(event) {
             break;
 
         case 'initParams': // Новый кейс для динамической настройки
-            paramMapping = msg.params;
-            config.paramsCount = paramMapping.length;
-            initBuffers();
-            console.log('[ScopeWorker] ✅ Параметры обновлены, размер:', config.paramsCount);
-            break;
+                    paramMapping = msg.params;
+                    config.paramsCount = paramMapping.length;
+                    initBuffers();
+                    console.log('[ScopeWorker] ✅ Параметры обновлены, размер:', config.paramsCount);
+                    self.postMessage({ type: 'initialized' });
+                    break;
 
         case 'setSerialPort':
             serialPort = msg.port;
@@ -86,12 +87,47 @@ function initBuffers() {
 
 // === ОБРАБОТКА ДАННЫХ ОТ SERIAL WORKER ===
 function handleSerialData(data) {
+    // 1. Проверяем тип сообщения
     if (data.type !== 'data') return;
 
-    const values = data.values;
+    // 2. Проверка: существуют ли вообще буферы
+    if (typeof buffers === 'undefined' || !buffers) {
+        console.error('[ScopeWorker] ❌ ОШИБКА: массив buffers не существует! Данные пришли до инициализации.');
+        return;
+    }
 
-    for (let i = 0; i < Math.min(values.length, config.paramsCount); i++) {
+    // 3. Проверка входящих данных
+    const rawBytes = data.buffer;
+    if (!rawBytes || rawBytes.length === 0) {
+        console.warn('[ScopeWorker] ⚠️ Получен пустой буфер данных.');
+        return;
+    }
+
+    // 4. Парсинг байтов в 16-битные значения
+    const values = [];
+    for (let i = 0; i < rawBytes.length; i += 2) {
+        if (i + 1 < rawBytes.length) {
+            const value = (rawBytes[i] << 8) | rawBytes[i + 1];
+            values.push(value);
+        }
+    }
+
+    // 5. Лог для отладки наполнения
+    console.log(`[ScopeWorker] Распарсено ${values.length} значений. Первое: ${values[0] || 'n/a'}`);
+
+    // 6. Наполнение буферов
+    const count = Math.min(values.length, buffers.length);
+    for (let i = 0; i < count; i++) {
         buffers[i].push(values[i]);
+        // Ограничение размера для предотвращения утечки памяти
+        if (buffers[i].length > 1000) {
+            buffers[i].shift();
+        }
+    }
+
+    // 7. Лог для проверки состояния буфера после записи
+    if (buffers[0]) {
+        console.log(`[ScopeWorker] Текущая длина buffers[0]: ${buffers[0].length}. Последнее значение: ${buffers[0][buffers[0].length - 1]}`);
     }
 }
 

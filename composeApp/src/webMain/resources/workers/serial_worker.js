@@ -1,220 +1,120 @@
-// serial_worker.js - Dedicated Worker для управления Serial-портом
-
-let serialWriter = null;
+let scopePort = null;
 let serialReader = null;
+let serialWriter = null;
 let isConnected = false;
 let isRunning = false;
 let pollingChunks = [];
+let config = { slaveAddress: 1 }; // Базовый адрес устройства по умолчанию
 
-let config = {
-    slaveAddress: 0x01,
-    registerAddr: 0x002d,
-    paramsCount: 78,
-    baudRate: 115200
-};
+console.log('[SerialWorker] ✅ Worker загружен');
 
-let scopePort = null;
-let mainPort = null;
+// Функция расчета CRC16 для Modbus RTU
+function calculateModbusCRC(buffer) {
+    let crc = 0xFFFF;
+    for (let i = 0; i < buffer.length; i++) {
+        crc ^= buffer[i];
+        for (let j = 0; j < 8; j++) {
+            if ((crc & 0x0001) !== 0) {
+                crc >>= 1;
+                crc ^= 0xA001;
+            } else {
+                crc >>= 1;
+            }
+        }
+    }
+    // Возвращаем в Little Endian (младший байт, затем старший)
+    return new Uint8Array([crc & 0xFF, (crc >> 8) & 0xFF]);
+}
 
-self.onmessage = function(event) {
-    const msg = event.data;
-    console.log('[SerialWorker] Получено сообщение:', msg.type);
+self.onmessage = async (e) => {
+    const msg = e.data;
+    console.log(`[SerialWorker] Получено сообщение: ${msg.type}`);
 
     switch (msg.type) {
         case 'init':
-            config = { ...config, ...msg.config };
-            self.postMessage({ type: 'configReceived' });
+            if (msg.config) config = msg.config;
             break;
 
         case 'setScopePort':
-            scopePort = msg.port;
-            scopePort.onmessage = function(e) {
-                console.log('[SerialWorker] Сообщение от Scope Worker:', e.data);
-            };
-            scopePort.start();
+            scopePort = e.ports[0];
             console.log('[SerialWorker] ✅ Порт для Scope Worker установлен');
             break;
 
-        case 'setMainPort':
-            mainPort = msg.port;
-            mainPort.onmessage = function(e) {
-                console.log('[SerialWorker] Сообщение от Main Thread:', e.data);
-            };
-            mainPort.start();
-            console.log('[SerialWorker] ✅ Порт для Main Thread установлен');
+        case 'initChunks':
+            pollingChunks = msg.chunks || [];
+            console.log(`[SerialWorker] ✅ Чанки инициализированы: ${pollingChunks.length}`);
             break;
 
-        // 🔥 ПРАВИЛЬНО: принимаем STREAMS и создаём reader/writer
         case 'setStreams':
-            try {
-                serialReader = msg.readable.getReader();
-                serialWriter = msg.writable.getWriter();
-                isConnected = true;
-                console.log('[SerialWorker] ✅ Streams получены, reader/writer созданы');
-                self.postMessage({ type: 'connected' });
-            } catch (error) {
-                console.error('[SerialWorker] ❌ Ошибка создания reader/writer:', error.message);
-                self.postMessage({ type: 'error', message: error.message });
+            serialReader = msg.readable.getReader();
+            serialWriter = msg.writable.getWriter();
+            isConnected = true;
+            console.log('[SerialWorker] ✅ Streams получены, reader/writer созданы');
+            // Сообщаем главному потоку, что мы готовы
+            self.postMessage({ type: 'connected' });
+            break;
+
+        case 'start':
+            console.log(`[Oscilloscope] Попытка запуска. isRunning: ${isRunning}, isConnected: ${isConnected}`);
+            if (!isConnected) {
+                console.error('[SerialWorker] ❌ Невозможно запустить: нет потоков (streams).');
+                return;
+            }
+            if (!isRunning) {
+                isRunning = true;
+                console.log('[SerialWorker] 📡 Опрос запущен');
+                readLoop();
+                writeLoop();
             }
             break;
 
-        case 'disconnect':
-            disconnectPort();
-            break;
-
-        case 'initChunks':
-                    pollingChunks = event.data.chunks;
-                    console.log('[SerialWorker] ✅ Получена карта опроса:', pollingChunks.length, 'блоков');
-                    break;
-
-                case 'start':
-                    startOscilloscope();
-                    break;
-
         case 'stop':
-            stopOscilloscope();
-            break;
-
-        case 'transceive':
-            handleTransceive(msg.data);
+            isRunning = false;
+            console.log('[SerialWorker] 🛑 Опрос остановлен');
             break;
     }
 };
 
-async function disconnectPort() {
-    stopOscilloscope();
-
-    if (serialReader) {
-        try { await serialReader.cancel(); } catch (e) {}
-        serialReader = null;
-    }
-
-    if (serialWriter) {
-        try { await serialWriter.close(); } catch (e) {}
-        serialWriter = null;
-    }
-
-    isConnected = false;
-    console.log('[SerialWorker] 🔌 Порт закрыт');
-    self.postMessage({ type: 'disconnected' });
-}
-
-function startOscilloscope() {
-    console.log(`[Oscilloscope] Попытка запуска. isRunning: ${isRunning}, isConnected: ${isConnected}`);
-
-    if (isRunning || !isConnected) {
-        self.postMessage({ type: 'error', message: `Невозможно запустить: isRunning=${isRunning}, isConnected=${isConnected}` });
-        return;
-    }
-
-    isRunning = true;
-    console.log('[SerialWorker]  Опрос запущен');
-    self.postMessage({ type: 'started' });
-
-    readLoop();
-    writeLoop();
-}
-
-function stopOscilloscope() {
-    isRunning = false;
-    console.log('[SerialWorker] ⏹️ Опрос остановлен');
-    self.postMessage({ type: 'stopped' });
-}
-
-async function readLoop() {
-    console.log('[SerialWorker] readLoop started');
-
-    try {
-        while (isConnected && isRunning) {
-            const { value, done } = await serialReader.read();
-            if (done) break;
-            if (!value) continue;
-
-            parseModbusPackets(value);
-        }
-    } catch (error) {
-        console.error('[SerialWorker] readLoop error:', error.message);
-        self.postMessage({ type: 'error', message: error.message });
-    }
-}
-
-let buffer = [];
-
-function parseModbusPackets(data) {
-    buffer.push(...data);
-
-    while (buffer.length >= 5) {
-        if (buffer[0] === config.slaveAddress && buffer[1] === 0x03) {
-            const byteCount = buffer[2];
-            const expectedLength = 3 + byteCount + 2;
-
-            if (buffer.length < expectedLength) break;
-
-            let crc = 0xFFFF;
-            for (let i = 0; i < expectedLength - 2; i++) {
-                crc ^= buffer[i];
-                for (let j = 0; j < 8; j++) {
-                    crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : crc >> 1;
-                }
-            }
-
-            const receivedCrc = buffer[expectedLength - 2] | (buffer[expectedLength - 1] << 8);
-
-            if (crc === receivedCrc) {
-                const values = [];
-                for (let i = 0; i < byteCount; i += 2) {
-                    values.push((buffer[3 + i] << 8) | buffer[4 + i]);
-                }
-
-                if (scopePort) {
-                    scopePort.postMessage({
-                        type: 'data',
-                        values: values,
-                        timestamp: performance.now()
-                    });
-                }
-
-                if (mainPort) {
-                    mainPort.postMessage({
-                        type: 'data',
-                        values: values,
-                        timestamp: performance.now()
-                    });
-                }
-            }
-
-            buffer.splice(0, expectedLength);
-        } else {
-            buffer.shift();
-        }
-    }
-}
-
+// Цикл отправки запросов (Master)
+// Цикл отправки запросов (Master)
 async function writeLoop() {
     console.log('[SerialWorker] writeLoop started');
 
     while (isConnected && isRunning) {
-        // Итерируемся по массиву pollingChunks, который мы заполнили при initChunks
+        if (!pollingChunks || pollingChunks.length === 0) {
+            console.warn('[SerialWorker] ⚠️ Список регистров пуст! Подставляем тестовый чанк (адрес 0, 10 регистров)');
+            pollingChunks = [{ startAddr: 0, count: 10 }];
+        }
+
         for (const chunk of pollingChunks) {
-            if (!isRunning) break; // Если нажали Stop — выходим из цикла
+            if (!isRunning) break;
 
             try {
-                // Создаем запрос для конкретного блока (адрес и длина из чанка)
+                // 1. Формируем тело команды (6 байт)
                 const body = new Uint8Array([
-                    config.slaveAddress,
-                    0x03,
+                    config.slaveAddress || 1, // Адрес устройства
+                    0x03,                     // Команда чтения регистров
                     (chunk.startAddr >> 8) & 0xFF,
                     chunk.startAddr & 0xFF,
                     (chunk.count >> 8) & 0xFF,
                     chunk.count & 0xFF
                 ]);
 
-                // ... (тут остается ваш код расчета CRC) ...
-                // finalPacket = ...
+                // 2. Считаем контрольную сумму (2 байта)
+                const crcBytes = calculateModbusCRC(body);
+
+                // 3. Склеиваем всё в финальный пакет (8 байт)
+                const finalPacket = new Uint8Array(body.length + 2);
+                finalPacket.set(body);
+                finalPacket.set(crcBytes, body.length);
+
+                console.log(`[SerialWorker] 📤 Отправка запроса (startAddr: ${chunk.startAddr}, count: ${chunk.count}), пакет:`, finalPacket);
+
+                // 4. Отправляем в устройство
                 await serialWriter.write(finalPacket);
 
-                // Небольшая пауза между запросами разных блоков
-                await new Promise(res => setTimeout(res, 10));
+                // Пауза между запросами разных блоков, чтобы устройство успело ответить
+                await new Promise(res => setTimeout(res, 20));
             } catch (error) {
                 console.error('[SerialWorker] writeLoop error:', error.message);
             }
@@ -222,95 +122,80 @@ async function writeLoop() {
     }
 }
 
-async function handleTransceive(requestData) {
-    if (!isConnected || !serialWriter) {
-        self.postMessage({ type: 'transceiveError', message: 'Порт не открыт' });
-        return;
-    }
-
-    const wasRunning = isRunning;
-    if (wasRunning) {
-        isRunning = false;
-        await new Promise(res => setTimeout(res, 50));
-    }
+// Цикл чтения ответов (Слушатель)
+async function readLoop() {
+    console.log('[SerialWorker] readLoop started');
+    let buffer = new Uint8Array(0);
 
     try {
-        const requestBytes = new Uint8Array(requestData);
-        await serialWriter.write(requestBytes);
-
-        const timeout = 2000;
-        const startTime = performance.now();
-        const responseBuffer = [];
-
-        while (performance.now() - startTime < timeout) {
+        while (isConnected && isRunning) {
             const { value, done } = await serialReader.read();
-            if (done) break;
-            if (value) {
-                responseBuffer.push(...value);
+            
+            if (value && value.length > 0) {
+                console.log('[SerialWorker] 📥 Получено байт:', value.length, value);
+                
+                // Добавляем новые байты к общему буферу
+                const newBuffer = new Uint8Array(buffer.length + value.length);
+                newBuffer.set(buffer);
+                newBuffer.set(value, buffer.length);
+                buffer = newBuffer;
+
+                // Разбираем буфер на валидные пакеты Modbus
+                buffer = processBuffer(buffer);
             }
 
-            if (responseBuffer.length >= 5) {
-                const funcCode = responseBuffer[1];
-                let expectedLength = 0;
-
-                if (funcCode === 0x03 || funcCode === 0x04 || funcCode === 0x11) {
-                    expectedLength = 3 + responseBuffer[2] + 2;
-                } else if (funcCode === 0x06 || funcCode === 0x10) {
-                    expectedLength = 8;
-                } else if (funcCode & 0x80) {
-                    expectedLength = 5;
-                }
-
-                if (expectedLength > 0 && responseBuffer.length >= expectedLength) {
-                    let crc = 0xFFFF;
-                    for (let i = 0; i < expectedLength - 2; i++) {
-                        crc ^= responseBuffer[i];
-                        for (let j = 0; j < 8; j++) {
-                            crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : crc >> 1;
-                        }
-                    }
-
-                    const receivedCrc = responseBuffer[expectedLength - 2] | (responseBuffer[expectedLength - 1] << 8);
-
-                    if (crc === receivedCrc) {
-                        const response = responseBuffer.slice(0, expectedLength);
-                        responseBuffer.splice(0, expectedLength);
-
-                        self.postMessage({
-                            type: 'transceiveResponse',
-                            data: response
-                        });
-
-                        if (wasRunning) {
-                            isRunning = true;
-                            writeLoop();
-                            readLoop();
-                        }
-                        return;
-                    }
-                }
+            if (done) {
+                console.log('[SerialWorker] Reader закрыт');
+                break;
             }
-
-            await new Promise(res => setTimeout(res, 10));
-        }
-
-        self.postMessage({ type: 'transceiveError', message: 'Таймаут ответа' });
-
-        if (wasRunning) {
-            isRunning = true;
-            writeLoop();
-            readLoop();
         }
     } catch (error) {
-        console.error('[SerialWorker] transceive error:', error.message);
-        self.postMessage({ type: 'transceiveError', message: error.message });
-
-        if (wasRunning) {
-            isRunning = true;
-            writeLoop();
-            readLoop();
-        }
+        console.error('[SerialWorker] readLoop error:', error.message);
     }
 }
 
-console.log('[SerialWorker] ✅ Worker загружен');
+// Функция парсинга и проверки входящих данных
+function processBuffer(buffer) {
+    // Минимальная длина ответа: Адрес(1) + Команда(1) + Байт-счетчик(1) + Данные(минимум 2) + CRC(2) = 7 байт
+    while (buffer.length >= 5) {
+        // Проверяем начало пакета (совпадает ли адрес и команда)
+        if (buffer[0] !== (config.slaveAddress || 1) || buffer[1] !== 0x03) {
+            // Мусор или сбой синхронизации — сдвигаем буфер на 1 байт
+            buffer = buffer.slice(1);
+            continue;
+        }
+
+        const byteCount = buffer[2];
+        const expectedLength = 3 + byteCount + 2; // Заголовок + Данные + CRC
+
+        if (buffer.length >= expectedLength) {
+            const packet = buffer.slice(0, expectedLength);
+            
+            // Проверяем контрольную сумму
+            const body = packet.slice(0, expectedLength - 2);
+            const crc = packet.slice(expectedLength - 2);
+            const expectedCrc = calculateModbusCRC(body);
+
+            if (crc[0] === expectedCrc[0] && crc[1] === expectedCrc[1]) {
+                // Пакет валидный!
+                const dataBytes = packet.slice(3, 3 + byteCount);
+                console.log(`[SerialWorker] ✅ Валидный ответ получен, байт данных: ${dataBytes.length}`);
+                
+                // Отправляем чистые данные в ScopeWorker для отрисовки графиков
+                if (scopePort) {
+                    scopePort.postMessage({ type: 'data', buffer: dataBytes });
+                }
+                
+                // Отрезаем обработанный пакет от буфера
+                buffer = buffer.slice(expectedLength);
+            } else {
+                console.warn('[SerialWorker] ⚠️ Ошибка CRC в ответе устройства');
+                buffer = buffer.slice(1); // Ищем следующий пакет
+            }
+        } else {
+            // Пакет еще не докачался целиком, ждем следующей порции байт из readLoop
+            break;
+        }
+    }
+    return buffer;
+}
